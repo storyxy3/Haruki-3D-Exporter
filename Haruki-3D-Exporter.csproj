@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <DefaultItemExcludes>$(DefaultItemExcludes);obj/**;bin/**</DefaultItemExcludes>
-    <AssetStudioRoot Condition="'$(AssetStudioRoot)' == ''">/mnt/d/github/AssetStudio-Haruki</AssetStudioRoot>
+    <AssetStudioRoot Condition="'$(AssetStudioRoot)' == ''">D:\github\AssetStudio-Haruki</AssetStudioRoot>
     <AssetStudioCliOutput>$(AssetStudioRoot)/AssetStudioCLI/bin/Release/net8.0</AssetStudioCliOutput>
   </PropertyGroup>
 

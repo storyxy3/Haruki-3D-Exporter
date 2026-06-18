@@ -184,17 +184,9 @@ public static class ConversionOptionsParser
                 return new ParseResult(false, null, $"Missing --asset-root for {(emitPartPackages ? "--emit-part-packages" : "--emit-costume-registries")}.");
             }
 
-            if (emitPartPackages && !emitCostumeRegistries)
+            if (emitPartPackages && !emitCostumeRegistries && (partCostume3dId is null) != string.IsNullOrWhiteSpace(partType))
             {
-                if (partCostume3dId is null)
-                {
-                    return new ParseResult(false, null, "Missing --part-costume3d-id for standalone --emit-part-packages.");
-                }
-
-                if (string.IsNullOrWhiteSpace(partType))
-                {
-                    return new ParseResult(false, null, "Missing --part-type for standalone --emit-part-packages.");
-                }
+                return new ParseResult(false, null, "--part-costume3d-id and --part-type must be used together.");
             }
         }
         else if (character3dId is not null)

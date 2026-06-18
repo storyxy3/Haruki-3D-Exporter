@@ -27,6 +27,7 @@ public sealed class PartPackageExporter
     {
         var partEntries = LoadPartEntries(masterDirectory, assetRoot)
             .Where(entry => entry.BundlePath is not null && entry.Status != "missing")
+            .Where(HasRequiredBundleFiles)
             .ToList();
         var results = new List<PartPackageExportResult>();
         foreach (var entry in partEntries)
@@ -374,6 +375,13 @@ public sealed class PartPackageExporter
     {
         var output = new CostumeRegistryExporter().ExportInMemory(masterDirectory, assetRoot);
         return output.PartRegistry.Entries;
+    }
+
+    private static bool HasRequiredBundleFiles(PartRegistryEntry entry)
+    {
+        return entry.BundlePath is not null &&
+            File.Exists(entry.BundlePath) &&
+            (entry.ColorVariationBundlePath is null || File.Exists(entry.ColorVariationBundlePath));
     }
 
     private static PjskSpringBoneRuntimeManager BuildRuntimeManager(string partKind, SpringMonoBehaviourEntry manager, SpringBoneExport part)

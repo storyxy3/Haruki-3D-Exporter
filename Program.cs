@@ -66,18 +66,30 @@ if (options.EmitPartPackages)
     try
     {
         var partPackageExporter = new PartPackageExporter();
-        var result = partPackageExporter.ExportOne(
-            options.MasterDirectory!,
-            options.AssetRoot!,
-            options.OutputDirectory,
-            options.PartCostume3dId!.Value,
-            options.PartType!,
-            options.PartUnit
-        );
-        Console.WriteLine($"Wrote part runtime package: {result.RuntimePath}");
-        if (result.Warnings.Count > 0)
+        if (options.PartCostume3dId is not null && options.PartType is not null)
         {
-            Console.WriteLine($"Warnings: {result.Warnings.Count}");
+            var result = partPackageExporter.ExportOne(
+                options.MasterDirectory!,
+                options.AssetRoot!,
+                options.OutputDirectory,
+                options.PartCostume3dId.Value,
+                options.PartType,
+                options.PartUnit
+            );
+            Console.WriteLine($"Wrote part runtime package: {result.RuntimePath}");
+            if (result.Warnings.Count > 0)
+            {
+                Console.WriteLine($"Warnings: {result.Warnings.Count}");
+            }
+        }
+        else
+        {
+            var results = partPackageExporter.ExportAll(
+                options.MasterDirectory!,
+                options.AssetRoot!,
+                options.OutputDirectory
+            );
+            Console.WriteLine($"Wrote {results.Count} part runtime package(s).");
         }
         return 0;
     }

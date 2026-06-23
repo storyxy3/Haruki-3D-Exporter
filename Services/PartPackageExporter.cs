@@ -208,6 +208,7 @@ public sealed class PartPackageExporter
             .OrderBy(root => root, StringComparer.Ordinal)
             .ToList();
         var defaultRoot = activeRoots.FirstOrDefault() ?? (partType == "body" ? "body" : "face");
+        var bindingDecisions = PjskSekaiRuntimeExtensionBuilder.BuildBindingDecisions(bones, bindings);
         return new PjskSpringBoneRuntimeUnitySetup(
             Version: "0414-part-1",
             UnityVersion: "2022.3.21f1",
@@ -255,7 +256,7 @@ public sealed class PartPackageExporter
                 DirectBindingCount: bindings.Count(binding => binding.SourceKind == "direct"),
                 ColliderFlagBindingCount: bindings.Count(binding => binding.SourceKind == "colliderFlag")
             ),
-            BindingDecisions: Array.Empty<PjskSpringBoneBindingDecision>(),
+            BindingDecisions: bindingDecisions,
             ActiveRootProfile: new PjskSpringBoneActiveRootProfile(
                 DefaultBodyRoot: defaultRoot,
                 ActiveRoots: activeRoots.Count == 0 ? new[] { defaultRoot } : activeRoots,

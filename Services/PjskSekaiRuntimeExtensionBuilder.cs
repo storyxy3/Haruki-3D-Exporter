@@ -609,7 +609,7 @@ public sealed class PjskSekaiRuntimeExtensionBuilder
         );
     }
 
-    private static IReadOnlyList<PjskSpringBoneBindingDecision> BuildBindingDecisions(
+    public static IReadOnlyList<PjskSpringBoneBindingDecision> BuildBindingDecisions(
         IReadOnlyList<PjskSpringBoneRuntimeBone> bones,
         IReadOnlyList<PjskSpringBoneRuntimeColliderBinding> bindings
     )

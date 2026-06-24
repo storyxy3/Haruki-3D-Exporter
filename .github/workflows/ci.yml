@@ -23,7 +23,7 @@ jobs:
     name: Build and test
     runs-on: ubuntu-latest
     env:
-      ASSETSTUDIO_ROOT: ${{ runner.temp }}/AssetStudio
+      ASSETSTUDIO_ROOT: /tmp/haruki-assetstudio
     steps:
       - name: Checkout
         uses: actions/checkout@v4

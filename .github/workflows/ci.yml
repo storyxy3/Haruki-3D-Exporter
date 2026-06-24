@@ -17,12 +17,13 @@ concurrency:
 env:
   ASSETSTUDIO_REPOSITORY: https://github.com/Team-Haruki/AssetStudio.git
   ASSETSTUDIO_BRANCH: sekai-modified
-  ASSETSTUDIO_ROOT: ${{ runner.temp }}/AssetStudio
 
 jobs:
   build:
     name: Build and test
     runs-on: ubuntu-latest
+    env:
+      ASSETSTUDIO_ROOT: ${{ runner.temp }}/AssetStudio
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -38,7 +39,7 @@ jobs:
           node-version: 22
 
       - name: Prepare AssetStudio
-        run: scripts/prepare-assetstudio.sh
+        run: bash scripts/prepare-assetstudio.sh
 
       - name: Build exporter
         run: dotnet build -p:AssetStudioRoot="${ASSETSTUDIO_ROOT}"

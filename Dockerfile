@@ -18,7 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/*
 
 COPY scripts/prepare-assetstudio.sh scripts/prepare-assetstudio.sh
-RUN scripts/prepare-assetstudio.sh
+RUN bash scripts/prepare-assetstudio.sh
 
 COPY . Haruki-3D-Exporter
 WORKDIR /src/Haruki-3D-Exporter

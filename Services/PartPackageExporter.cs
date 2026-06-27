@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Globalization;
 using AssetStudio;
 using PjskBundle2Parts.Models;
@@ -18,6 +19,14 @@ public sealed class PartPackageExporter
     private readonly SpringBoneExporter springBoneExporter = new();
     private readonly UnityRuntimeNativeMeshExporter nativeMeshExporter = new();
     private readonly UnityRuntimeTextureExporter textureExporter = new();
+    private readonly IReadOnlyDictionary<string, float> characterHeightMetersById;
+
+    public PartPackageExporter(
+        IReadOnlyDictionary<string, float>? characterHeightMetersById = null
+    )
+    {
+        this.characterHeightMetersById = characterHeightMetersById ?? DefaultCharacterHeightMetersById;
+    }
 
     public IReadOnlyList<PartPackageExportResult> ExportAll(
         string masterDirectory,
@@ -26,6 +35,7 @@ public sealed class PartPackageExporter
         string? manifestPath = null
     )
     {
+        var characterHeightMetersById = CharacterHeightResolver.LoadMetersByCharacterId(masterDirectory);
         var manifest = PartPackageExportManifest.Load(manifestPath);
         var partEntries = LoadPartEntries(masterDirectory, assetRoot)
             .Where(entry => entry.BundlePath is not null && entry.Status != "missing")
@@ -37,13 +47,14 @@ public sealed class PartPackageExporter
             var packageDirectory = Path.Combine(outputDirectory, entry.PackagePath.Replace('/', Path.DirectorySeparatorChar));
             var runtimePath = Path.Combine(packageDirectory, "part-runtime.json");
             var stamp = PartPackageInputStamp.From(entry);
-            if (manifest.CanSkip(entry.PackagePath, runtimePath, stamp))
+            if (manifest.CanSkip(entry.PackagePath, runtimePath, stamp) &&
+                RuntimePackageHasCharacterHeight(runtimePath))
             {
                 results.Add(new PartPackageExportResult(entry, runtimePath, Array.Empty<string>()));
                 continue;
             }
 
-            var result = Export(entry, assetRoot, outputDirectory);
+            var result = Export(entry, assetRoot, outputDirectory, characterHeightMetersById);
             manifest.Update(entry.PackagePath, stamp);
             results.Add(result);
         }
@@ -61,6 +72,7 @@ public sealed class PartPackageExporter
         string? unit
     )
     {
+        var characterHeightMetersById = CharacterHeightResolver.LoadMetersByCharacterId(masterDirectory);
         var normalizedPartType = NormalizePartType(partType);
         var entry = LoadPartEntries(masterDirectory, assetRoot)
             .Where(entry => entry.Costume3dId == costume3dId)
@@ -75,10 +87,15 @@ public sealed class PartPackageExporter
             throw new InvalidOperationException($"Matched part has no bundle path: costume3dId={costume3dId}, partType={partType}.");
         }
 
-        return Export(entry, assetRoot, outputDirectory);
+        return Export(entry, assetRoot, outputDirectory, characterHeightMetersById);
     }
 
-    public PartPackageExportResult Export(PartRegistryEntry entry, string assetRoot, string outputDirectory)
+    public PartPackageExportResult Export(
+        PartRegistryEntry entry,
+        string assetRoot,
+        string outputDirectory,
+        IReadOnlyDictionary<string, float>? characterHeightMetersById = null
+    )
     {
         if (entry.BundlePath is null)
         {
@@ -134,7 +151,7 @@ public sealed class PartPackageExporter
                 AssetRootRelativeBundlePath: TryRelativePath(assetRoot, input.ResolvedBundlePath)
             ),
             Mount: BuildMount(entry, inventory, normalizedType),
-            Manifest: BuildManifest(entry, input, inventory, normalizedType),
+            Manifest: BuildManifest(entry, input, inventory, normalizedType, characterHeightMetersById),
             NativeMeshes: nativeMeshes,
             MaterialSlots: materialSlots,
             TextureRoles: textureRoles,
@@ -213,6 +230,7 @@ public sealed class PartPackageExporter
                 SourceColliderPathIds: group.SourceColliderPathIds,
                 Colliders: group.Colliders
             ))
+            .Concat(BuildDeferredColliderFlagBindings(partKind, bones))
             .ToList();
         var activeRoots = springBone.PrefabGraph.Transforms
             .Select(transform => FirstPathSegment(transform.TransformPath))
@@ -285,6 +303,59 @@ public sealed class PartPackageExporter
         );
     }
 
+    private static IReadOnlyList<PjskSpringBoneRuntimeColliderBinding> BuildDeferredColliderFlagBindings(
+        string partKind,
+        IReadOnlyList<PjskSpringBoneRuntimeBone> bones
+    )
+    {
+        if (!string.Equals(partKind, "Head", StringComparison.OrdinalIgnoreCase))
+        {
+            return Array.Empty<PjskSpringBoneRuntimeColliderBinding>();
+        }
+
+        return bones
+            .Where(bone => bone.ColliderFlag > 0)
+            .Select(bone =>
+            {
+                var prefixes = ResolveColliderFlagPrefixes(bone.ColliderFlag);
+                return new PjskSpringBoneRuntimeColliderBinding(
+                    SourceKind: "deferred_body_colliderFlag",
+                    PartKind: partKind,
+                    SourceSpringBonePathId: bone.PathId,
+                    ColliderFlag: bone.ColliderFlag,
+                    MatchedPrefixes: prefixes,
+                    CollidersByRoot: prefixes.Count == 0
+                        ? null
+                        : new Dictionary<string, IReadOnlyList<int>>
+                        {
+                            ["body"] = Array.Empty<int>()
+                        },
+                    DefaultRoot: "body",
+                    SourceColliderPathIds: Array.Empty<long>(),
+                    Colliders: Array.Empty<int>()
+                );
+            })
+            .ToList();
+    }
+
+    private static IReadOnlyList<string> ResolveColliderFlagPrefixes(int colliderFlag)
+    {
+        var prefixes = new List<string>();
+        if ((colliderFlag & 2) != 0)
+        {
+            prefixes.Add("CL_Chest");
+        }
+        if ((colliderFlag & 4) != 0)
+        {
+            prefixes.Add("CL_Left_Arm");
+        }
+        if ((colliderFlag & 8) != 0)
+        {
+            prefixes.Add("CL_Right_Arm");
+        }
+        return prefixes;
+    }
+
     private PjskUnityRuntimeNativeMeshSet ExportNativeMeshes(
         string partType,
         IImported imported,
@@ -325,7 +396,7 @@ public sealed class PartPackageExporter
                     FaceShadowTex: RewriteTexturePath(FindTextureSlot(material, "_FaceShadowTex"), textures),
                     RenderOrder: ResolveRenderOrder(materialKind),
                     ShaderPipeline: partType == "body" ? "sekai_csh_toon" : "character_tint_with_weak_sdf",
-                    Lighting: BuildDefaultLighting()
+                    Lighting: SekaiMaterialMetadata.BuildLightingSettings(material)
                 );
             }))
             .DistinctBy(slot => $"{slot.MeshName}::{slot.MaterialName}", StringComparer.OrdinalIgnoreCase)
@@ -349,7 +420,8 @@ public sealed class PartPackageExporter
         PartRegistryEntry entry,
         ResolvedBundleInput input,
         BundleInventory inventory,
-        string partType
+        string partType,
+        IReadOnlyDictionary<string, float>? characterHeightMetersById
     )
     {
         return new
@@ -357,6 +429,8 @@ public sealed class PartPackageExporter
             id = $"{partType}-{entry.CharacterId:00}-{entry.Costume3dId}-{entry.Unit ?? "default"}",
             displayName = entry.Name,
             characterId = entry.CharacterId.ToString("00"),
+            characterHeightMeters = CharacterHeightResolver.ResolveMeters(characterHeightMetersById, entry.CharacterId),
+            materialPipeline = "embedded",
             source = new
             {
                 bundleRoot = input.ResolvedBundlePath,
@@ -365,7 +439,26 @@ public sealed class PartPackageExporter
             },
             rootNodeName = inventory.Roots.FirstOrDefault()?.Name,
             attachNode = entry.AttachNode,
+            proxy = partType == "body"
+                ? BuildPartBodyProxy(SekaiMaterialMetadata.BuildBodyProxy(inventory.Materials))
+                : BuildPartHeadProxy(SekaiMaterialMetadata.BuildHeadProxy(inventory.Materials)),
         };
+    }
+
+    private static bool RuntimePackageHasCharacterHeight(string runtimePath)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(runtimePath));
+            return document.RootElement.TryGetProperty("manifest", out var manifest) &&
+                manifest.TryGetProperty("characterHeightMeters", out var height) &&
+                height.ValueKind == JsonValueKind.Number &&
+                height.GetSingle() > 0f;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 
     private static PartRuntimeMount BuildMount(PartRegistryEntry entry, BundleInventory inventory, string partType)
@@ -420,7 +513,7 @@ public sealed class PartPackageExporter
             EnableCollision: ReadBool(manager.Raw, "enableCollision", defaultValue: true),
             CollideWithGround: ReadBool(manager.Raw, "collideWithGround", defaultValue: false),
             GroundHeight: ReadFloat(manager.Raw, "groundHeight", 0f),
-            IsSumOfForcesOnBone: ReadBool(manager.Raw, "isSumOfForcesOnBone", defaultValue: false),
+            IsSumOfForcesOnBone: ReadBool(manager.Raw, "isSumOfForcesOnBone", defaultValue: true),
             IsPaused: ReadBool(manager.Raw, "isPaused", defaultValue: false),
             DynamicRatio: ReadFloat(manager.Raw, "dynamicRatio", 1f),
             SimulationFrameRate: (int)ReadFloat(manager.Raw, "simulationFrameRate", 60f),
@@ -460,10 +553,42 @@ public sealed class PartPackageExporter
             RawAngularStiffness: ReadNullableFloat(bone.Raw, "angularStiffness"),
             RawSpringConstant: ReadNullableFloat(bone.Raw, "springConstant"),
             LengthLimitTargets: bone.LengthLimitTargets.Select(target => new VrmSpringBoneLengthLimitTargetCandidate(target.Name, target.TransformPath, target.PathId)).ToList(),
-            RawAngleLimits: new VrmSpringBoneAngleLimitsCandidate(null, null),
+            RawAngleLimits: new VrmSpringBoneAngleLimitsCandidate(
+                Y: ReadAxisLimit(bone.Raw, "yAngleLimits"),
+                Z: ReadAxisLimit(bone.Raw, "zAngleLimits")
+            ),
             DirectColliderPathIds: bone.Colliders.Select(collider => collider.PathId).ToList(),
             ColliderFlag: (int)ReadFloat(bone.Raw, "colliderFlag", 0f)
         );
+    }
+
+    private static VrmSpringBoneAxisLimitCandidate? ReadAxisLimit(JsonObject raw, string key)
+    {
+        if (!raw.TryGetPropertyValue(key, out var value) || value is not JsonObject axis)
+        {
+            return null;
+        }
+
+        return new VrmSpringBoneAxisLimitCandidate(
+            Active: ReadOptionalBool(axis, "active") ??
+                ReadOptionalBool(axis, "enabled") ??
+                ReadOptionalBool(axis, "Active") ??
+                ReadOptionalBool(axis, "Enabled") ??
+                ReadOptionalBool(axis, "m_Enabled") ??
+                true,
+            Min: ReadNullableFloat(axis, "min"),
+            Max: ReadNullableFloat(axis, "max")
+        );
+    }
+
+    private static bool? ReadOptionalBool(JsonObject raw, string name)
+    {
+        if (!raw.TryGetPropertyValue(name, out var value) || value is null)
+        {
+            return null;
+        }
+
+        return bool.TryParse(value.ToString(), out var parsed) ? parsed : null;
     }
 
     private static IReadOnlyList<PjskSpringBoneRuntimeManagerColliderCache> BuildManagerColliderCaches(
@@ -568,7 +693,7 @@ public sealed class PartPackageExporter
 
     private static string? FindTextureSlot(MaterialInventory? material, string slotName)
     {
-        return material?.TextureSlots.FirstOrDefault(slot => string.Equals(slot.SlotName, slotName, StringComparison.OrdinalIgnoreCase))?.TextureName;
+        return SekaiMaterialMetadata.FindTextureSlot(material, slotName);
     }
 
     private static string? RewriteTexturePath(string? textureName, IReadOnlyDictionary<string, string> textures)
@@ -599,64 +724,117 @@ public sealed class PartPackageExporter
 
     private static string ClassifyHeadMaterialKind(string materialName, bool hasFaceShadowTex)
     {
-        var lower = materialName.ToLowerInvariant();
-        if (lower.Contains("eye_highlight") || lower.Contains("_ehl_"))
+        var name = materialName.ToLowerInvariant();
+        if (name.Contains("eyelash"))
+        {
+            return "eyelash";
+        }
+        if (name.Contains("eyebrow"))
+        {
+            return "eyebrow";
+        }
+        if (name.Contains("eye_highlight") || name.Contains("_ehl_"))
         {
             return "eyelight";
         }
-        if (lower.Contains("eye"))
+        if (name.Contains("_eye"))
         {
             return "eye";
         }
-        if (lower.Contains("hair"))
+        if (hasFaceShadowTex)
+        {
+            return "face_sdf";
+        }
+        if (name.Contains("_hair_"))
         {
             return "hair";
         }
-        return hasFaceShadowTex ? "face_sdf" : "face";
+        if (name.Contains("_acc_"))
+        {
+            return "accessory";
+        }
+        return "face";
     }
 
     private static int ResolveRenderOrder(string materialKind)
     {
         return materialKind switch
         {
-            "face_sdf" or "face" => 10,
-            "eye" => 20,
-            "eyelight" => 30,
+            "face_sdf" => 10,
             "hair" or "accessory" => 12,
+            "eyelash" or "eyebrow" => 20,
+            "eye" => 24,
+            "eyelight" => 28,
             _ => 0,
         };
     }
 
-    private static MaterialLightingSettings BuildDefaultLighting()
+    private float ResolveCharacterHeightMeters(string characterId)
     {
-        return new MaterialLightingSettings(
-            SpecularPower: 0.35f,
-            RimThreshold: 0.2f,
-            ShadowTexWeight: 1f,
-            Saturation: 1f,
-            PartsAmbientColor: "#ffffff",
-            ReflectionBlendColor: "#ffffff",
-            OutlineWidth: 0.006f,
-            OutlineOffset: 0f,
-            OutlineLightness: 0.4f,
-            ShadowWidth: 0.35f,
-            UseOutlineSecondNormal: 0f,
-            DistortionFps: 0f,
-            DistortionIntensity: 0f,
-            DistortionIntensityX: 0f,
-            DistortionIntensityY: 0f,
-            DistortionOffsetX: 0f,
-            DistortionOffsetY: 0f,
-            DistortionScrollSpeed: 0f,
-            DistortionScrollX: 0f,
-            DistortionScrollY: 0f,
-            DistortionTexTilingX: 1f,
-            DistortionTexTilingY: 1f,
-            Threshold: 0.5f,
-            LightInfluence: 0.5f,
-            LightInfluenceForEyeHighlight: 0.5f
-        );
+        return characterHeightMetersById.TryGetValue(characterId.PadLeft(2, '0'), out var height)
+            ? height
+            : 1.00f;
     }
+
+    private static object BuildPartBodyProxy(BodyProxySettings proxy)
+    {
+        return new
+        {
+            bodyColor = proxy.BodyColor,
+            shadowColor = proxy.ShadowColor,
+            bodyScale = proxy.BodyScale,
+            torsoLength = proxy.TorsoLength,
+            shoulderWidth = proxy.ShoulderWidth,
+        };
+    }
+
+    private static object BuildPartHeadProxy(HeadProxySettings proxy)
+    {
+        return new
+        {
+            faceColor = proxy.FaceColor,
+            faceShadeColor = proxy.FaceShadeColor,
+            skinColorDefault = proxy.SkinColorDefault,
+            skinColor1 = proxy.SkinColor1,
+            skinColor2 = proxy.SkinColor2,
+            hairColor = proxy.HairColor,
+            hairShadowColor = proxy.HairShadowColor,
+            headRadius = proxy.HeadRadius,
+            faceDepth = proxy.FaceDepth,
+            hairArc = proxy.HairArc,
+        };
+    }
+
+    private static readonly IReadOnlyDictionary<string, float> DefaultCharacterHeightMetersById =
+        new Dictionary<string, float>
+        {
+            ["01"] = 1.61f,
+            ["02"] = 1.59f,
+            ["03"] = 1.66f,
+            ["04"] = 1.59f,
+            ["05"] = 1.58f,
+            ["06"] = 1.63f,
+            ["07"] = 1.56f,
+            ["08"] = 1.68f,
+            ["09"] = 1.56f,
+            ["10"] = 1.60f,
+            ["11"] = 1.74f,
+            ["12"] = 1.78f,
+            ["13"] = 1.72f,
+            ["14"] = 1.52f,
+            ["15"] = 1.56f,
+            ["16"] = 1.80f,
+            ["17"] = 1.54f,
+            ["18"] = 1.62f,
+            ["19"] = 1.58f,
+            ["20"] = 1.63f,
+            ["21"] = 1.58f,
+            ["22"] = 1.52f,
+            ["23"] = 1.56f,
+            ["24"] = 1.62f,
+            ["25"] = 1.67f,
+            ["26"] = 1.75f,
+        };
 
     private static IReadOnlyList<HeadMorphChannel> ReadHeadMorphBindings(IImported importedHead)
     {

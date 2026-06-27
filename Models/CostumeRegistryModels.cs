@@ -69,6 +69,8 @@ public sealed record HeadHairCompatibilityRule(
     [property: JsonPropertyName("hairCostume3dId")] int HairCostume3dId,
     [property: JsonPropertyName("state")] string State,
     [property: JsonPropertyName("isDefault")] bool IsDefault,
+    [property: JsonPropertyName("headCompositionKind")] string HeadCompositionKind,
+    [property: JsonPropertyName("activeContributors")] IReadOnlyList<string> ActiveContributors,
     [property: JsonPropertyName("source")] IReadOnlyList<string> Source,
     [property: JsonPropertyName("warnings")] IReadOnlyList<string> Warnings
 );

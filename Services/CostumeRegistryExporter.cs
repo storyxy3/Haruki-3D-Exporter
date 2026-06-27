@@ -211,6 +211,7 @@ public sealed class CostumeRegistryExporter
             var warnings = new List<string>();
             AddPatternReferenceWarnings(warnings, "head", chosen.HeadCostume3dId, "head", costumeById, modelsByCostumeId);
             AddPatternReferenceWarnings(warnings, "hair", chosen.HairCostume3dId, "hair", costumeById, modelsByCostumeId);
+            var composition = ResolveHeadHairComposition(chosen, modelsByCostumeId);
 
             rules.Add(new HeadHairCompatibilityRule(
                 Unit: chosen.Unit,
@@ -218,12 +219,47 @@ public sealed class CostumeRegistryExporter
                 HairCostume3dId: chosen.HairCostume3dId,
                 State: state,
                 IsDefault: availablePattern?.IsDefault == true || defaultPattern is not null,
+                HeadCompositionKind: composition.Kind,
+                ActiveContributors: composition.ActiveContributors,
                 Source: sources,
                 Warnings: warnings
             ));
         }
 
         return new HeadHairCompatibilityRegistry(Version: 1, Source: source, Rules: rules);
+    }
+
+    private static (string Kind, IReadOnlyList<string> ActiveContributors) ResolveHeadHairComposition(
+        Costume3dModelPatternMaster pattern,
+        IReadOnlyDictionary<int, IReadOnlyList<Costume3dModelMaster>> modelsByCostumeId
+    )
+    {
+        var head = ResolvePatternModel(modelsByCostumeId, pattern.HeadCostume3dId, pattern.Unit);
+        if (head is not null && IsCompleteHeadCostume(head.HeadCostume3dAssetbundleType))
+        {
+            return ("complete_head", new[] { "head" });
+        }
+        if (head is not null && IsAccessoryHeadCostume(head.HeadCostume3dAssetbundleType))
+        {
+            return ("base_hair_with_head_optional_accessory", new[] { "hair", "head_optional" });
+        }
+
+        return ("custom_head_hair", new[] { "head", "hair" });
+    }
+
+    private static Costume3dModelMaster? ResolvePatternModel(
+        IReadOnlyDictionary<int, IReadOnlyList<Costume3dModelMaster>> modelsByCostumeId,
+        int costume3dId,
+        string? unit
+    )
+    {
+        if (!modelsByCostumeId.TryGetValue(costume3dId, out var models) || models.Count == 0)
+        {
+            return null;
+        }
+        return models.FirstOrDefault(model => string.Equals(model.Unit, unit, StringComparison.OrdinalIgnoreCase))
+            ?? models.FirstOrDefault(model => string.IsNullOrWhiteSpace(model.Unit))
+            ?? models[0];
     }
 
     private static CardCostumeUnlockRegistry BuildCardCostumeUnlocks(
@@ -614,6 +650,14 @@ public sealed class CostumeRegistryExporter
     private static bool IsAccessoryHeadCostume(string? type)
     {
         return string.Equals(type, "head_only", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsCompleteHeadCostume(string? type)
+    {
+        return string.Equals(type, "head_and_hair", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(type, "head_all", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(type, "head_front", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(type, "head_back", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string ToSystemPath(string assetbundleName)

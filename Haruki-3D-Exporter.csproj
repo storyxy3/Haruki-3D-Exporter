@@ -6,7 +6,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <DefaultItemExcludes>$(DefaultItemExcludes);obj/**;bin/**;Tests/**</DefaultItemExcludes>
-    <AssetStudioRoot Condition="'$(AssetStudioRoot)' == ''">D:\github\AssetStudio-Haruki</AssetStudioRoot>
+    <AssetStudioRoot Condition="'$(AssetStudioRoot)' == '' and '$(OS)' == 'Windows_NT'">D:\github\AssetStudio-Haruki</AssetStudioRoot>
+    <AssetStudioRoot Condition="'$(AssetStudioRoot)' == ''">/mnt/d/github/AssetStudio-Haruki</AssetStudioRoot>
     <AssetStudioCliOutput>$(AssetStudioRoot)/AssetStudioCLI/bin/Release/net8.0</AssetStudioCliOutput>
     <EnableDefaultCompileItems Condition="'$(HARUKI_EXPORTER_CONFIG_TEST)' == 'true'">false</EnableDefaultCompileItems>
   </PropertyGroup>
@@ -19,10 +20,14 @@
 
   <ItemGroup>
     <Compile Include="Services/ConversionOptionsParser.cs" Condition="'$(HARUKI_EXPORTER_CONFIG_TEST)' == 'true'" />
+    <Compile Include="Services/SekaiMaterialMetadata.cs" Condition="'$(HARUKI_EXPORTER_CONFIG_TEST)' == 'true'" />
     <Compile Include="Models/ConversionOptions.cs" Condition="'$(HARUKI_EXPORTER_CONFIG_TEST)' == 'true'" />
     <Compile Include="Models/ExporterConfig.cs" Condition="'$(HARUKI_EXPORTER_CONFIG_TEST)' == 'true'" />
+    <Compile Include="Models/InventoryModels.cs" Condition="'$(HARUKI_EXPORTER_CONFIG_TEST)' == 'true'" />
+    <Compile Include="Models/ManifestModels.cs" Condition="'$(HARUKI_EXPORTER_CONFIG_TEST)' == 'true'" />
     <Compile Include="Models/ParseResult.cs" Condition="'$(HARUKI_EXPORTER_CONFIG_TEST)' == 'true'" />
     <Compile Include="Tests/ConfigParserSmoke.cs" Condition="'$(HARUKI_EXPORTER_CONFIG_TEST)' == 'true'" />
+    <Compile Include="Tests/PartMaterialMetadataSmoke.cs" Condition="'$(HARUKI_EXPORTER_CONFIG_TEST)' == 'true'" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(HARUKI_EXPORTER_CONFIG_TEST)' != 'true'">

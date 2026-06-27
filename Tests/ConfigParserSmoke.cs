@@ -1,4 +1,5 @@
 using System.Text.Json;
+using PjskBundle2Parts.Tests;
 using PjskBundle2Parts.Services;
 
 var tempDir = Path.Combine(Path.GetTempPath(), $"haruki-exporter-config-test-{Guid.NewGuid():N}");
@@ -49,6 +50,57 @@ Expect(options.PartUnit == "light_sound", "part unit comes from config");
 Expect(options.RoleCharacter3dIds.SequenceEqual(new[] { 5, 7, 9 }), "role character3d ids merge config and CLI");
 Expect(options.ManifestPath == "/data/manifest-from-cli.json", "CLI manifest overrides config");
 Expect(options.KeepIntermediate, "keep intermediate comes from config");
+
+PartMaterialMetadataSmoke.Run();
+
+var partPackageExporterSource = File.ReadAllText(Path.Combine(
+    AppContext.BaseDirectory,
+    "..",
+    "..",
+    "..",
+    "..",
+    "Services",
+    "PartPackageExporter.cs"
+));
+Expect(partPackageExporterSource.Contains("name.Contains(\"eyelash\")"), "part package exporter classifies eyelash separately");
+Expect(partPackageExporterSource.Contains("return \"eyelash\""), "part package exporter returns eyelash material kind");
+Expect(partPackageExporterSource.Contains("name.Contains(\"eyebrow\")"), "part package exporter classifies eyebrow separately");
+Expect(partPackageExporterSource.Contains("return \"eyebrow\""), "part package exporter returns eyebrow material kind");
+Expect(partPackageExporterSource.Contains("name.Contains(\"_acc_\")"), "part package exporter classifies head acc materials as accessory");
+Expect(partPackageExporterSource.Contains("\"eyelash\" or \"eyebrow\""), "part package exporter uses full-runtime render order for face detail layers");
+Expect(partPackageExporterSource.Contains("BuildDeferredColliderFlagBindings"), "part package exporter preserves deferred head colliderFlag bindings");
+Expect(partPackageExporterSource.Contains("deferred_body_colliderFlag"), "part package exporter labels head colliderFlag bindings as deferred to viewer composer");
+Expect(partPackageExporterSource.Contains("ResolveColliderFlagPrefixes"), "part package exporter resolves colliderFlag matched prefixes for viewer rebinding");
+Expect(partPackageExporterSource.Contains("MatchedPrefixes: prefixes"), "part package exporter writes colliderFlag matched prefixes for viewer rebinding");
+Expect(partPackageExporterSource.Contains("IsSumOfForcesOnBone: ReadBool(manager.Raw, \"isSumOfForcesOnBone\", defaultValue: true)"), "part package exporter defaults SpringManager force summing on like full runtime export");
+Expect(partPackageExporterSource.Contains("RawAngleLimits: new VrmSpringBoneAngleLimitsCandidate("), "part package exporter preserves per-bone angle limits");
+Expect(partPackageExporterSource.Contains("Y: ReadAxisLimit(bone.Raw, \"yAngleLimits\")"), "part package exporter reads y angle limits from SpringBone raw data");
+Expect(partPackageExporterSource.Contains("Z: ReadAxisLimit(bone.Raw, \"zAngleLimits\")"), "part package exporter reads z angle limits from SpringBone raw data");
+Expect(partPackageExporterSource.Contains("ReadOptionalBool(axis, \"active\") ??"), "part package exporter reads explicit angle limit active flags");
+Expect(partPackageExporterSource.Contains("?? true,"), "part package exporter defaults present angle limits to active like full runtime output");
+
+var costumeRegistryModelsSource = File.ReadAllText(Path.Combine(
+    AppContext.BaseDirectory,
+    "..",
+    "..",
+    "..",
+    "..",
+    "Models",
+    "CostumeRegistryModels.cs"
+));
+var costumeRegistryExporterSource = File.ReadAllText(Path.Combine(
+    AppContext.BaseDirectory,
+    "..",
+    "..",
+    "..",
+    "..",
+    "Services",
+    "CostumeRegistryExporter.cs"
+));
+Expect(costumeRegistryModelsSource.Contains("headCompositionKind"), "head-hair compatibility rules expose composition kind");
+Expect(costumeRegistryModelsSource.Contains("activeContributors"), "head-hair compatibility rules expose active contributors");
+Expect(costumeRegistryExporterSource.Contains("ResolveHeadHairComposition"), "registry exporter resolves head-hair composition metadata");
+Expect(costumeRegistryExporterSource.Contains("complete_head"), "registry exporter marks complete head compositions");
 
 static void Expect(bool condition, string message)
 {

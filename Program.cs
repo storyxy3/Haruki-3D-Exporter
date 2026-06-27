@@ -91,7 +91,10 @@ if (options.EmitPartPackages)
 {
     try
     {
-        var partPackageExporter = new PartPackageExporter();
+        var partCharacterHeightMetersById = !string.IsNullOrWhiteSpace(options.MasterDirectory)
+            ? LoadCharacterHeightMetersById(options.MasterDirectory!)
+            : null;
+        var partPackageExporter = new PartPackageExporter(partCharacterHeightMetersById);
         if (options.PartCostume3dId is not null && options.PartType is not null)
         {
             var result = partPackageExporter.ExportOne(
@@ -972,25 +975,7 @@ static IReadOnlyList<HeadMorphChannel> ReadHeadMorphBindings(IImported importedH
 
 static IReadOnlyDictionary<string, float> LoadCharacterHeightMetersById(string masterDirectory)
 {
-    var gameCharactersPath = Path.Combine(
-        Path.GetFullPath(masterDirectory),
-        "gameCharacters.json"
-    );
-    if (!File.Exists(gameCharactersPath))
-    {
-        throw new FileNotFoundException("gameCharacters.json was not found.", gameCharactersPath);
-    }
-
-    using var stream = File.OpenRead(gameCharactersPath);
-    var characters = JsonSerializer.Deserialize<IReadOnlyList<GameCharacterMaster>>(
-        stream,
-        new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
-    ) ?? Array.Empty<GameCharacterMaster>();
-
-    return characters.ToDictionary(
-        character => character.Id.ToString("00"),
-        character => character.Height > 10f ? character.Height / 100f : character.Height
-    );
+    return CharacterHeightResolver.LoadMetersByCharacterId(masterDirectory);
 }
 
 static string? SelectAccessoryRootName(BundleInventory? inventory)

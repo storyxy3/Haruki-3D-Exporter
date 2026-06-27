@@ -34,6 +34,9 @@ FROM mcr.microsoft.com/dotnet/runtime:8.0-bookworm-slim
 
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=true
 WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libxml2 && \
+    rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/exporter /app/exporter
 
 ENTRYPOINT ["dotnet", "/app/exporter/Haruki-3D-Exporter.dll"]

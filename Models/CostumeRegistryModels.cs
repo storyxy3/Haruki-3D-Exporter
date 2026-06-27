@@ -24,6 +24,7 @@ public sealed record Character3dIndexEntry(
     [property: JsonPropertyName("headCostume3dId")] int HeadCostume3dId,
     [property: JsonPropertyName("hairCostume3dId")] int HairCostume3dId,
     [property: JsonPropertyName("outputPath")] string OutputPath,
+    [property: JsonPropertyName("roleRuntimePath")] string RoleRuntimePath,
     [property: JsonPropertyName("status")] string Status,
     [property: JsonPropertyName("warnings")] IReadOnlyList<string> Warnings
 );

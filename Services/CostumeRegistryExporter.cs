@@ -123,6 +123,7 @@ public sealed class CostumeRegistryExporter
                     HeadCostume3dId: entry.HeadCostume3dId,
                     HairCostume3dId: entry.HairCostume3dId,
                     OutputPath: $"presets/{entry.Id}/",
+                    RoleRuntimePath: BuildRoleRuntimePath(entry.CharacterId, entry.Unit),
                     Status: warnings.Count == 0 ? "available" : "partial",
                     Warnings: warnings
                 );
@@ -318,6 +319,11 @@ public sealed class CostumeRegistryExporter
     private static string BuildPackagePath(string partType, int costume3dId, string? unit)
     {
         return $"parts/{NormalizePackagePartType(partType)}/{costume3dId}/{unit ?? "default"}/";
+    }
+
+    private static string BuildRoleRuntimePath(int characterId, string? unit)
+    {
+        return $"roles/{characterId}/{unit ?? "default"}/role-runtime.json";
     }
 
     private static string NormalizePackagePartType(string partType)

@@ -12,10 +12,12 @@ public sealed record ConversionOptions(
     string? AssetRoot,
     bool EmitCostumeRegistries,
     bool EmitPartPackages,
+    bool EmitRoleRuntimes,
     bool ExportFaceMotion,
     int? PartCostume3dId,
     string? PartType,
     string? PartUnit,
+    IReadOnlyList<int> RoleCharacter3dIds,
     string? FaceMotionSourcePath,
     string? ManifestPath
 );

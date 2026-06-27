@@ -12,10 +12,12 @@ public sealed record ExporterConfig(
     bool? KeepIntermediate,
     bool? EmitCostumeRegistries,
     bool? EmitPartPackages,
+    bool? EmitRoleRuntimes,
     bool? ExportFaceMotion,
     int? PartCostume3dId,
     string? PartType,
     string? PartUnit,
+    int[]? RoleCharacter3dIds,
     string? SourcePath,
     string? Manifest,
     string? AssetStudioRoot

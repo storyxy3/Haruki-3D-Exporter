@@ -11,6 +11,7 @@ public static class ConversionOptionsParser
         "  Haruki-3D-Exporter --character3d-id <id> --master <master-directory> --asset-root <AssetBundles-root> --out <directory> [--motion <bundle-or-export-folder>] [--keep-intermediate]\n" +
         "  Haruki-3D-Exporter --emit-costume-registries --master <master-directory> --asset-root <AssetBundles-root> --out <directory>\n" +
         "  Haruki-3D-Exporter --emit-part-packages --part-costume3d-id <id> --part-type <body|head|hair|head_optional> --master <master-directory> --asset-root <AssetBundles-root> --out <directory> [--part-unit <unit>]\n\n" +
+        "  Haruki-3D-Exporter --emit-role-runtimes --role-character3d-id <id> --master <master-directory> --asset-root <AssetBundles-root> --out <directory> [--motion <bundle-or-export-folder>]\n" +
         "  Haruki-3D-Exporter --export-face-motion --motion <bundle-or-decoded-folder-or-json> --out <face_motion.json-or-directory> [--source-path <bundle-path>]\n\n" +
         "  Add --config <json> to load defaults from haruki-3d-exporter.config.json.\n\n" +
         "Notes:\n" +
@@ -21,6 +22,7 @@ public static class ConversionOptionsParser
         "  --asset-root points at the AssetBundles root containing live_pv/model/characterv2\n" +
         "  --emit-costume-registries writes character3d-index.json, parts/part-registry.json, parts/head-hair-compatibility.json, and parts/card-costume-unlocks.json\n" +
         "  --emit-part-packages writes one parts/<partType>/<costume3dId>/<unit>/part-runtime.json for runtime custom assembly\n" +
+        "  --emit-role-runtimes writes roles/<characterId>/<unit>/role-runtime.json with motion metadata for selected character3ds rows\n" +
         "  --manifest records part package input file stamps for incremental --emit-part-packages runs\n" +
         "  --export-face-motion writes face_motion.json from a costume_setting bundle or decoded AnimationClip JSON without Python helpers\n" +
         "  --motion accepts a costume_setting bundle or a folder containing unity-motion.json/face_motion.json/light_motion.json\n" +
@@ -40,10 +42,12 @@ public static class ConversionOptionsParser
         var keepIntermediate = false;
         var emitCostumeRegistries = false;
         var emitPartPackages = false;
+        var emitRoleRuntimes = false;
         var exportFaceMotion = false;
         int? partCostume3dId = null;
         string? partType = null;
         string? partUnit = null;
+        var roleCharacter3dIds = new List<int>();
         string? sourcePath = null;
         string? manifestPath = null;
         string? configPath = null;
@@ -77,10 +81,12 @@ public static class ConversionOptionsParser
                 keepIntermediate = config.KeepIntermediate ?? false;
                 emitCostumeRegistries = config.EmitCostumeRegistries ?? false;
                 emitPartPackages = config.EmitPartPackages ?? false;
+                emitRoleRuntimes = config.EmitRoleRuntimes ?? false;
                 exportFaceMotion = config.ExportFaceMotion ?? false;
                 partCostume3dId = config.PartCostume3dId;
                 partType = config.PartType;
                 partUnit = config.PartUnit;
+                roleCharacter3dIds = config.RoleCharacter3dIds?.Distinct().ToList() ?? new List<int>();
                 sourcePath = config.SourcePath;
                 manifestPath = config.Manifest;
             }
@@ -175,6 +181,12 @@ public static class ConversionOptionsParser
                 continue;
             }
 
+            if (arg is "--emit-role-runtimes")
+            {
+                emitRoleRuntimes = true;
+                continue;
+            }
+
             if (arg is "--export-face-motion")
             {
                 exportFaceMotion = true;
@@ -201,6 +213,17 @@ public static class ConversionOptionsParser
             if (arg is "--part-unit")
             {
                 partUnit = ReadValue(args, ref i, arg);
+                continue;
+            }
+
+            if (arg is "--role-character3d-id")
+            {
+                var value = ReadValue(args, ref i, arg);
+                if (!int.TryParse(value, out var parsed))
+                {
+                    return new ParseResult(false, null, $"Option {arg} must be an integer.");
+                }
+                roleCharacter3dIds.Add(parsed);
                 continue;
             }
 
@@ -231,21 +254,26 @@ public static class ConversionOptionsParser
                 return new ParseResult(false, null, "Missing --motion for --export-face-motion.");
             }
         }
-        else if (emitCostumeRegistries || emitPartPackages)
+        else if (emitCostumeRegistries || emitPartPackages || emitRoleRuntimes)
         {
             if (string.IsNullOrWhiteSpace(masterDirectory))
             {
-                return new ParseResult(false, null, $"Missing --master for {(emitPartPackages ? "--emit-part-packages" : "--emit-costume-registries")}.");
+                return new ParseResult(false, null, $"Missing --master for {ResolveRegistryModeName(emitPartPackages, emitRoleRuntimes)}.");
             }
 
             if (string.IsNullOrWhiteSpace(assetRoot))
             {
-                return new ParseResult(false, null, $"Missing --asset-root for {(emitPartPackages ? "--emit-part-packages" : "--emit-costume-registries")}.");
+                return new ParseResult(false, null, $"Missing --asset-root for {ResolveRegistryModeName(emitPartPackages, emitRoleRuntimes)}.");
             }
 
             if (emitPartPackages && !emitCostumeRegistries && (partCostume3dId is null) != string.IsNullOrWhiteSpace(partType))
             {
                 return new ParseResult(false, null, "--part-costume3d-id and --part-type must be used together.");
+            }
+
+            if (emitRoleRuntimes && character3dId is null && roleCharacter3dIds.Count == 0)
+            {
+                return new ParseResult(false, null, "Missing --role-character3d-id for --emit-role-runtimes.");
             }
         }
         else if (character3dId is not null)
@@ -268,6 +296,7 @@ public static class ConversionOptionsParser
         if (!exportFaceMotion &&
             !emitCostumeRegistries &&
             !emitPartPackages &&
+            !emitRoleRuntimes &&
             character3dId is null &&
             string.IsNullOrWhiteSpace(head))
         {
@@ -293,10 +322,15 @@ public static class ConversionOptionsParser
                 assetRoot,
                 emitCostumeRegistries,
                 emitPartPackages,
+                emitRoleRuntimes,
                 exportFaceMotion,
                 partCostume3dId,
                 NormalizePartType(partType),
                 string.IsNullOrWhiteSpace(partUnit) ? null : partUnit,
+                roleCharacter3dIds
+                    .Concat(character3dId is null ? Array.Empty<int>() : new[] { character3dId.Value })
+                    .Distinct()
+                    .ToList(),
                 string.IsNullOrWhiteSpace(sourcePath) ? null : sourcePath,
                 string.IsNullOrWhiteSpace(manifestPath) ? null : manifestPath
             ),
@@ -319,6 +353,15 @@ public static class ConversionOptionsParser
             "head_optional" or "accessory" => "head_optional",
             var value => value,
         };
+    }
+
+    private static string ResolveRegistryModeName(bool emitPartPackages, bool emitRoleRuntimes)
+    {
+        if (emitRoleRuntimes)
+        {
+            return "--emit-role-runtimes";
+        }
+        return emitPartPackages ? "--emit-part-packages" : "--emit-costume-registries";
     }
 
     private static ExporterConfig LoadConfig(string configPath)

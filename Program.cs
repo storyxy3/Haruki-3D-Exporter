@@ -38,6 +38,32 @@ if (options.ExportFaceMotion)
     }
 }
 
+if (options.EmitRoleRuntimes)
+{
+    try
+    {
+        var roleRuntimeExporter = new RoleRuntimeExporter();
+        var results = roleRuntimeExporter.ExportMany(
+            options.MasterDirectory!,
+            options.AssetRoot!,
+            options.OutputDirectory,
+            options.RoleCharacter3dIds,
+            options.MotionPath
+        );
+        Console.WriteLine($"Wrote {results.Count} role runtime package(s).");
+        foreach (var result in results.Where(result => result.Warnings.Count > 0))
+        {
+            Console.WriteLine($"Warnings for character3d {result.Character3dId}: {result.Warnings.Count}");
+        }
+        return 0;
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"Role runtime export failed: {ex.Message}");
+        return 2;
+    }
+}
+
 if (options.EmitCostumeRegistries)
 {
     try

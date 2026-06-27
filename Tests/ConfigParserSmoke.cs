@@ -12,9 +12,11 @@ File.WriteAllText(configPath, JsonSerializer.Serialize(new
     character3dId = 5,
     emitCostumeRegistries = true,
     emitPartPackages = true,
+    emitRoleRuntimes = true,
     partCostume3dId = 2,
     partType = "Body",
     partUnit = "light_sound",
+    roleCharacter3dIds = new[] { 5, 7 },
     manifest = "/data/manifest-from-config.json",
     keepIntermediate = true
 }));
@@ -24,6 +26,7 @@ var parsed = ConversionOptionsParser.Parse(new[]
     "--config", configPath,
     "--out", "/data/out-from-cli",
     "--part-type", "head_optional",
+    "--role-character3d-id", "9",
     "--manifest", "/data/manifest-from-cli.json"
 });
 
@@ -39,9 +42,11 @@ Expect(options.OutputDirectory == "/data/out-from-cli", "CLI output overrides co
 Expect(options.Character3dId == 5, "character3d id comes from config");
 Expect(options.EmitCostumeRegistries, "emit registries comes from config");
 Expect(options.EmitPartPackages, "emit part packages comes from config");
+Expect(options.EmitRoleRuntimes, "emit role runtimes comes from config");
 Expect(options.PartCostume3dId == 2, "part costume id comes from config");
 Expect(options.PartType == "head_optional", "CLI part type overrides and normalizes config");
 Expect(options.PartUnit == "light_sound", "part unit comes from config");
+Expect(options.RoleCharacter3dIds.SequenceEqual(new[] { 5, 7, 9 }), "role character3d ids merge config and CLI");
 Expect(options.ManifestPath == "/data/manifest-from-cli.json", "CLI manifest overrides config");
 Expect(options.KeepIntermediate, "keep intermediate comes from config");
 

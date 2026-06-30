@@ -162,6 +162,18 @@ When building outside Docker against a local AssetStudio checkout, pass its path
 ./scripts/dotnet.sh build -p:AssetStudioRoot=<AssetStudio-Haruki-directory>
 ```
 
+Publish the Linux x64 runtime directory used by Haruki-Sekai-Asset-Updater external mounts:
+
+```bash
+scripts/publish-linux-x64.sh /data/xy/haruki-3d-exporter-runtime/linux-x64
+```
+
+The output directory contains a self-contained `Haruki-3D-Exporter` executable and its AssetStudio runtime dependencies.
+Mount that directory into updater deployments that enable `regions.<region>.export.haruki_3d`.
+
+If the host does not have a .NET SDK, build the Docker image and copy `/app/exporter` out of a created container.
+That copied directory is the same external runtime mount payload.
+
 ## Docker
 
 Build the Linux exporter image:
@@ -197,7 +209,7 @@ docker run --rm \
   --out /data/out
 ```
 
-GitHub Actions builds and publishes the image to GHCR on `main` and version
+GitHub Actions builds and publishes a self-contained Linux image to GHCR on `main` and version
 tags. Pull requests only build the image.
 
 ## Masterdata Audit

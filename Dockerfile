@@ -24,13 +24,15 @@ COPY . Haruki-3D-Exporter
 WORKDIR /src/Haruki-3D-Exporter
 
 RUN dotnet restore \
+    -r linux-x64 \
     -p:AssetStudioRoot="${ASSETSTUDIO_ROOT}" \
     -p:RestoreConfigFile=NuGet.Config
-RUN dotnet publish -c Release -o /app/exporter \
+RUN dotnet publish -c Release -r linux-x64 -o /app/exporter \
+    --self-contained true \
     --no-restore \
     -p:AssetStudioRoot="${ASSETSTUDIO_ROOT}"
 
-FROM mcr.microsoft.com/dotnet/runtime:8.0-bookworm-slim
+FROM mcr.microsoft.com/dotnet/runtime-deps:8.0-bookworm-slim
 
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=true
 WORKDIR /app
@@ -39,4 +41,4 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/exporter /app/exporter
 
-ENTRYPOINT ["dotnet", "/app/exporter/Haruki-3D-Exporter.dll"]
+ENTRYPOINT ["/app/exporter/Haruki-3D-Exporter"]

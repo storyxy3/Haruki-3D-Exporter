@@ -54,8 +54,37 @@ public sealed class PartPackageExporter
                 continue;
             }
 
-            var result = Export(entry, assetRoot, outputDirectory, characterHeightMetersById);
-            manifest.Update(entry.PackagePath, stamp);
+            PartPackageExportResult result;
+            try
+            {
+                result = Export(entry, assetRoot, outputDirectory, characterHeightMetersById);
+                manifest.Update(entry.PackagePath, stamp);
+            }
+            catch (Exception ex)
+            {
+                Directory.CreateDirectory(packageDirectory);
+                var errorPath = Path.Combine(packageDirectory, "part-export-error.json");
+                WriteJson(errorPath, new
+                {
+                    packagePath = entry.PackagePath,
+                    sourcePackagePath = entry.SourcePackagePath,
+                    costume3dId = entry.Costume3dId,
+                    partType = entry.PartType,
+                    unit = entry.Unit,
+                    colorId = entry.ColorId,
+                    bundlePath = entry.BundlePath,
+                    colorVariationBundlePath = entry.ColorVariationBundlePath,
+                    error = ex.Message,
+                    exceptionType = ex.GetType().FullName,
+                });
+                Console.Error.WriteLine($"Part package export skipped: {entry.PackagePath}: {ex.Message}");
+                result = new PartPackageExportResult(
+                    entry,
+                    errorPath,
+                    new[] { $"export failed: {ex.Message}" },
+                    Succeeded: false
+                );
+            }
             results.Add(result);
         }
         manifest.Save();
@@ -142,7 +171,8 @@ public sealed class PartPackageExporter
         var springBone = springBoneExporter.Export(input);
         var runtimeSpringBone = BuildPartSpringBone(normalizedType, springBone);
         var nativeMeshes = ExportNativeMeshes(normalizedType, imported, runtimeSpringBone);
-        var materialSlots = BuildMaterialSlots(normalizedType, inventory, textures);
+        var materialWarnings = new List<string>();
+        var materialSlots = BuildMaterialSlots(normalizedType, inventory, textures, materialWarnings);
         var textureRoles = BuildTextureRoles(materialSlots);
         var package = new PartRuntimePackage(
             Version: "0414-part-1",
@@ -174,6 +204,7 @@ public sealed class PartPackageExporter
                 ? ReadHeadMorphBindings(imported)
                 : Array.Empty<HeadMorphChannel>(),
             Warnings: entry.Warnings
+                .Concat(materialWarnings)
                 .Concat(nativeMeshes.Warnings)
                 .Concat(runtimeSpringBone.Warnings)
                 .Distinct(StringComparer.Ordinal)
@@ -386,10 +417,11 @@ public sealed class PartPackageExporter
     private static IReadOnlyList<PjskSekaiRuntimeMaterialSlot> BuildMaterialSlots(
         string partType,
         BundleInventory inventory,
-        IReadOnlyDictionary<string, string> textures
+        IReadOnlyDictionary<string, string> textures,
+        List<string> warnings
     )
     {
-        var materialMap = inventory.Materials.ToDictionary(material => material.Name, StringComparer.OrdinalIgnoreCase);
+        var materialMap = BuildMaterialMap(inventory.Materials, warnings);
         return inventory.SkinnedMeshes
             .Concat(inventory.StaticMeshes)
             .SelectMany(mesh => mesh.MaterialNames.Select(materialName =>
@@ -414,6 +446,27 @@ public sealed class PartPackageExporter
             }))
             .DistinctBy(slot => $"{slot.MeshName}::{slot.MaterialName}", StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private static IReadOnlyDictionary<string, MaterialInventory> BuildMaterialMap(
+        IReadOnlyList<MaterialInventory> materials,
+        List<string> warnings
+    )
+    {
+        var result = new Dictionary<string, MaterialInventory>(StringComparer.OrdinalIgnoreCase);
+        var duplicateNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var material in materials)
+        {
+            if (!result.TryAdd(material.Name, material))
+            {
+                duplicateNames.Add(material.Name);
+            }
+        }
+        foreach (var name in duplicateNames.OrderBy(name => name, StringComparer.OrdinalIgnoreCase))
+        {
+            warnings.Add($"duplicate material name `{name}`; using first material entry");
+        }
+        return result;
     }
 
     private static IReadOnlyList<PjskSekaiRuntimeTextureRole> BuildTextureRoles(IReadOnlyList<PjskSekaiRuntimeMaterialSlot> slots)
@@ -932,7 +985,8 @@ public sealed class PartPackageExporter
 public sealed record PartPackageExportResult(
     PartRegistryEntry Entry,
     string RuntimePath,
-    IReadOnlyList<string> Warnings
+    IReadOnlyList<string> Warnings,
+    bool Succeeded = true
 );
 
 public sealed class PartPackageExportManifest

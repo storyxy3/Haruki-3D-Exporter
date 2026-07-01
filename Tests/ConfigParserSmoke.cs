@@ -53,15 +53,8 @@ Expect(options.KeepIntermediate, "keep intermediate comes from config");
 
 PartMaterialMetadataSmoke.Run();
 
-var partPackageExporterSource = File.ReadAllText(Path.Combine(
-    AppContext.BaseDirectory,
-    "..",
-    "..",
-    "..",
-    "..",
-    "Services",
-    "PartPackageExporter.cs"
-));
+var repoRoot = FindRepoRoot();
+var partPackageExporterSource = File.ReadAllText(Path.Combine(repoRoot, "Services", "PartPackageExporter.cs"));
 Expect(partPackageExporterSource.Contains("name.Contains(\"eyelash\")"), "part package exporter classifies eyelash separately");
 Expect(partPackageExporterSource.Contains("return \"eyelash\""), "part package exporter returns eyelash material kind");
 Expect(partPackageExporterSource.Contains("name.Contains(\"eyebrow\")"), "part package exporter classifies eyebrow separately");
@@ -77,26 +70,11 @@ Expect(partPackageExporterSource.Contains("RawAngleLimits: new VrmSpringBoneAngl
 Expect(partPackageExporterSource.Contains("Y: ReadAxisLimit(bone.Raw, \"yAngleLimits\")"), "part package exporter reads y angle limits from SpringBone raw data");
 Expect(partPackageExporterSource.Contains("Z: ReadAxisLimit(bone.Raw, \"zAngleLimits\")"), "part package exporter reads z angle limits from SpringBone raw data");
 Expect(partPackageExporterSource.Contains("ReadOptionalBool(axis, \"active\") ??"), "part package exporter reads explicit angle limit active flags");
-Expect(partPackageExporterSource.Contains("?? true,"), "part package exporter defaults present angle limits to active like full runtime output");
+Expect(partPackageExporterSource.Contains("ReadOptionalBool(axis, \"m_Enabled\") ??"), "part package exporter reads Unity enabled angle limit flags");
+Expect(partPackageExporterSource.Contains("                true,"), "part package exporter defaults present angle limits to active like full runtime output");
 
-var costumeRegistryModelsSource = File.ReadAllText(Path.Combine(
-    AppContext.BaseDirectory,
-    "..",
-    "..",
-    "..",
-    "..",
-    "Models",
-    "CostumeRegistryModels.cs"
-));
-var costumeRegistryExporterSource = File.ReadAllText(Path.Combine(
-    AppContext.BaseDirectory,
-    "..",
-    "..",
-    "..",
-    "..",
-    "Services",
-    "CostumeRegistryExporter.cs"
-));
+var costumeRegistryModelsSource = File.ReadAllText(Path.Combine(repoRoot, "Models", "CostumeRegistryModels.cs"));
+var costumeRegistryExporterSource = File.ReadAllText(Path.Combine(repoRoot, "Services", "CostumeRegistryExporter.cs"));
 Expect(costumeRegistryModelsSource.Contains("headCompositionKind"), "head-hair compatibility rules expose composition kind");
 Expect(costumeRegistryModelsSource.Contains("activeContributors"), "head-hair compatibility rules expose active contributors");
 Expect(costumeRegistryModelsSource.Contains("PartSourceMap"), "costume registry exposes part source map");
@@ -110,6 +88,10 @@ Expect(costumeRegistryExporterSource.Contains("SHA256.HashData"), "registry expo
 Expect(costumeRegistryExporterSource.Contains("parts/_sources/"), "registry exporter points duplicate part ids at shared source package paths");
 Expect(partPackageExporterSource.Contains("SelectRepresentativePartEntries"), "part package exporter exports each shared source package once");
 Expect(partPackageExporterSource.Contains("GroupBy(entry => entry.PackagePath"), "part package exporter groups export work by package path");
+Expect(partPackageExporterSource.Contains("BuildMaterialMap"), "part package exporter tolerates duplicate material names");
+Expect(partPackageExporterSource.Contains("duplicate material name"), "part package exporter records duplicate material diagnostics");
+Expect(partPackageExporterSource.Contains("part-export-error.json"), "part package exporter writes per-package errors during full export");
+Expect(partPackageExporterSource.Contains("Part package export skipped"), "part package exporter continues after per-package export failures");
 
 static void Expect(bool condition, string message)
 {
@@ -117,4 +99,21 @@ static void Expect(bool condition, string message)
     {
         throw new Exception(message);
     }
+}
+
+static string FindRepoRoot()
+{
+    foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })
+    {
+        var current = new DirectoryInfo(start);
+        while (current is not null)
+        {
+            if (File.Exists(Path.Combine(current.FullName, "Services", "PartPackageExporter.cs")))
+            {
+                return current.FullName;
+            }
+            current = current.Parent;
+        }
+    }
+    throw new DirectoryNotFoundException("Could not locate Haruki-3D-Exporter repo root.");
 }

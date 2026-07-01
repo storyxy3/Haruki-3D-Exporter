@@ -119,7 +119,13 @@ if (options.EmitPartPackages)
                 options.OutputDirectory,
                 options.ManifestPath
             );
-            Console.WriteLine($"Wrote {results.Count} part runtime package(s).");
+            var succeeded = results.Count(result => result.Succeeded);
+            var failed = results.Count - succeeded;
+            Console.WriteLine($"Wrote {succeeded} part runtime package(s).");
+            if (failed > 0)
+            {
+                Console.Error.WriteLine($"Skipped {failed} part runtime package(s); see part-export-error.json files in the output tree.");
+            }
         }
         return 0;
     }

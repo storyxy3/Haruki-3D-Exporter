@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Security.Cryptography;
+using System.Text;
 using PjskBundle2Parts.Models;
 
 namespace PjskBundle2Parts.Services;
@@ -24,6 +26,7 @@ public sealed class CostumeRegistryExporter
         Directory.CreateDirectory(Path.Combine(normalizedOutputDirectory, "parts"));
         WriteJson(Path.Combine(normalizedOutputDirectory, "character3d-index.json"), export.Character3dIndex);
         WriteJson(Path.Combine(normalizedOutputDirectory, "parts", "part-registry.json"), export.PartRegistry);
+        WriteJson(Path.Combine(normalizedOutputDirectory, "parts", "part-source-map.json"), export.PartSourceMap);
         WriteJson(Path.Combine(normalizedOutputDirectory, "parts", "head-hair-compatibility.json"), export.HeadHairCompatibility);
         WriteJson(Path.Combine(normalizedOutputDirectory, "parts", "card-costume-unlocks.json"), export.CardCostumeUnlocks);
 
@@ -67,6 +70,14 @@ public sealed class CostumeRegistryExporter
             .ToDictionary(group => group.Key, group => (IReadOnlyList<Costume3dModelMaster>)group.ToList());
         var cardsById = cards.ToDictionary(entry => entry.Id);
 
+        var partRegistry = BuildPartRegistry(
+            costume3ds,
+            modelsByCostumeId,
+            characterById,
+            normalizedAssetRoot,
+            source
+        );
+
         return new CostumeRegistryExport(
             Character3dIndex: BuildCharacter3dIndex(
                 character3ds,
@@ -74,13 +85,7 @@ public sealed class CostumeRegistryExporter
                 modelsByCostumeId,
                 source
             ),
-            PartRegistry: BuildPartRegistry(
-                costume3ds,
-                modelsByCostumeId,
-                characterById,
-                normalizedAssetRoot,
-                source
-            ),
+            PartRegistry: partRegistry,
             HeadHairCompatibility: BuildHeadHairCompatibility(
                 availablePatterns,
                 notAvailablePatterns,
@@ -94,7 +99,8 @@ public sealed class CostumeRegistryExporter
                 cardsById,
                 costumeById,
                 source
-            )
+            ),
+            PartSourceMap: BuildPartSourceMap(partRegistry, normalizedAssetRoot, source)
         );
     }
 
@@ -146,7 +152,7 @@ public sealed class CostumeRegistryExporter
         {
             if (!modelsByCostumeId.TryGetValue(costume.Id, out var models) || models.Count == 0)
             {
-                entries.Add(BuildPartEntry(costume, null, null, null, null, null, "missing", new[] { "missing costume3dModels row" }));
+                entries.Add(BuildPartEntry(costume, null, null, null, null, null, null, "missing", new[] { "missing costume3dModels row" }));
                 continue;
             }
 
@@ -156,11 +162,12 @@ public sealed class CostumeRegistryExporter
                 var bundlePath = ResolveBundlePath(costume, model, characterById, assetRoot, warnings);
                 var colorPath = ResolveColorVariationBundlePath(costume, model, characterById, assetRoot, warnings);
                 var registryPartType = ResolveRegistryPartType(costume.PartType, model);
-                var packagePath = BuildPackagePath(registryPartType, costume.Id, model.Unit);
+                var sourceIdentity = BuildSourceIdentity(registryPartType, bundlePath, colorPath, assetRoot);
+                var packagePath = sourceIdentity?.PackagePath ?? BuildPackagePath(registryPartType, costume.Id, model.Unit);
                 var status = bundlePath is null
                     ? "missing"
                     : "planned";
-                entries.Add(BuildPartEntry(costume, model, bundlePath, colorPath, ResolveAttachNode(model), packagePath, status, warnings));
+                entries.Add(BuildPartEntry(costume, model, bundlePath, colorPath, sourceIdentity, ResolveAttachNode(model), packagePath, status, warnings));
             }
         }
 
@@ -323,6 +330,7 @@ public sealed class CostumeRegistryExporter
         Costume3dModelMaster? model,
         string? bundlePath,
         string? colorVariationPath,
+        PartSourceIdentity? source,
         string? attachNode,
         string? packagePath,
         string status,
@@ -345,11 +353,120 @@ public sealed class CostumeRegistryExporter
             Part: model?.Part,
             BundlePath: bundlePath,
             ColorVariationBundlePath: colorVariationPath,
+            BaseSourceKey: source?.BaseSourceKey,
+            SourceKey: source?.SourceKey,
+            SourcePackagePath: source?.PackagePath,
             PackagePath: packagePath ?? BuildPackagePath(costume.PartType, costume.Id, model?.Unit),
             AttachNode: attachNode,
             Status: status,
             Warnings: warnings.Distinct().ToList()
         );
+    }
+
+    private static PartSourceMap BuildPartSourceMap(
+        PartRegistry registry,
+        string assetRoot,
+        IReadOnlyDictionary<string, string> source
+    )
+    {
+        var entries = registry.Entries
+            .Where(entry => !string.IsNullOrWhiteSpace(entry.SourceKey))
+            .GroupBy(entry => entry.SourceKey!, StringComparer.Ordinal)
+            .OrderBy(group => group.Key, StringComparer.Ordinal)
+            .Select(group =>
+            {
+                var ordered = group
+                    .OrderBy(entry => entry.PartType, StringComparer.Ordinal)
+                    .ThenBy(entry => entry.Costume3dId)
+                    .ThenBy(entry => entry.Unit ?? string.Empty, StringComparer.Ordinal)
+                    .ToList();
+                var representative = ordered[0];
+                var aliases = ordered.Select(BuildPartSourceAlias).ToList();
+                return new PartSourceMapEntry(
+                    SourceKey: representative.SourceKey!,
+                    BaseSourceKey: representative.BaseSourceKey!,
+                    PartType: representative.PartType,
+                    BundlePath: representative.BundlePath!,
+                    ColorVariationBundlePath: representative.ColorVariationBundlePath,
+                    AssetRootRelativeBundlePath: ToAssetRootRelativePath(assetRoot, representative.BundlePath),
+                    AssetRootRelativeColorVariationBundlePath: ToAssetRootRelativePath(assetRoot, representative.ColorVariationBundlePath),
+                    PackagePath: representative.PackagePath,
+                    Representative: aliases[0],
+                    Aliases: aliases
+                );
+            })
+            .ToList();
+
+        return new PartSourceMap(Version: 1, Source: source, Entries: entries);
+    }
+
+    private static PartSourceMapAlias BuildPartSourceAlias(PartRegistryEntry entry)
+    {
+        return new PartSourceMapAlias(
+            Costume3dId: entry.Costume3dId,
+            PartType: entry.PartType,
+            CharacterId: entry.CharacterId,
+            Unit: entry.Unit,
+            Name: entry.Name,
+            ColorId: entry.ColorId,
+            ColorName: entry.ColorName,
+            Costume3dGroupId: entry.Costume3dGroupId
+        );
+    }
+
+    private static PartSourceIdentity? BuildSourceIdentity(
+        string partType,
+        string? bundlePath,
+        string? colorVariationPath,
+        string assetRoot
+    )
+    {
+        if (string.IsNullOrWhiteSpace(bundlePath))
+        {
+            return null;
+        }
+
+        var normalizedPartType = NormalizePackagePartType(partType);
+        var baseRelativePath = ToAssetRootRelativePath(assetRoot, bundlePath) ?? NormalizeSourcePath(bundlePath);
+        var colorRelativePath = ToAssetRootRelativePath(assetRoot, colorVariationPath);
+        var baseKey = ComputeSourceKey(normalizedPartType, baseRelativePath, null);
+        var sourceKey = ComputeSourceKey(normalizedPartType, baseRelativePath, colorRelativePath);
+        return new PartSourceIdentity(
+            BaseSourceKey: baseKey,
+            SourceKey: sourceKey,
+            PackagePath: $"parts/_sources/{normalizedPartType}/{sourceKey}/"
+        );
+    }
+
+    private static string ComputeSourceKey(string partType, string bundlePath, string? colorVariationPath)
+    {
+        var input = $"{partType}\n{bundlePath}\n{colorVariationPath ?? string.Empty}";
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(input));
+        return Convert.ToHexString(bytes).ToLowerInvariant();
+    }
+
+    private static string? ToAssetRootRelativePath(string assetRoot, string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return null;
+        }
+
+        var relative = Path.GetRelativePath(assetRoot, path);
+        if (relative == ".." ||
+            relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal) ||
+            relative.StartsWith($"..{Path.AltDirectorySeparatorChar}", StringComparison.Ordinal) ||
+            Path.IsPathRooted(relative))
+        {
+            return NormalizeSourcePath(path);
+        }
+
+        return NormalizeSourcePath(relative);
+    }
+
+    private static string NormalizeSourcePath(string path)
+    {
+        return path.Replace('\\', '/').TrimStart('/');
     }
 
     private static string BuildPackagePath(string partType, int costume3dId, string? unit)
@@ -690,7 +807,14 @@ public sealed class CostumeRegistryExporter
         Console.WriteLine($"Wrote costume registries to {outputDirectory}");
         Console.WriteLine($"  character3d presets: {export.Character3dIndex.Entries.Count}");
         Console.WriteLine($"  part entries: {export.PartRegistry.Entries.Count} ({missingParts} missing metadata)");
+        Console.WriteLine($"  part source packages: {export.PartSourceMap.Entries.Count}");
         Console.WriteLine($"  head/hair rules: {export.HeadHairCompatibility.Rules.Count} ({patternWarnings} with warnings)");
         Console.WriteLine($"  card unlock entries: {export.CardCostumeUnlocks.Entries.Count}");
     }
 }
+
+internal sealed record PartSourceIdentity(
+    string BaseSourceKey,
+    string SourceKey,
+    string PackagePath
+);

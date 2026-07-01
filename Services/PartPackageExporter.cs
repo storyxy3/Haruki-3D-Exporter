@@ -42,7 +42,7 @@ public sealed class PartPackageExporter
             .Where(HasRequiredBundleFiles)
             .ToList();
         var results = new List<PartPackageExportResult>();
-        foreach (var entry in partEntries)
+        foreach (var entry in SelectRepresentativePartEntries(partEntries))
         {
             var packageDirectory = Path.Combine(outputDirectory, entry.PackagePath.Replace('/', Path.DirectorySeparatorChar));
             var runtimePath = Path.Combine(packageDirectory, "part-runtime.json");
@@ -61,6 +61,19 @@ public sealed class PartPackageExporter
         manifest.Save();
 
         return results;
+    }
+
+    private static IReadOnlyList<PartRegistryEntry> SelectRepresentativePartEntries(IReadOnlyList<PartRegistryEntry> entries)
+    {
+        return entries
+            .GroupBy(entry => entry.PackagePath, StringComparer.Ordinal)
+            .Select(group => group
+                .OrderBy(entry => entry.Costume3dId)
+                .ThenBy(entry => entry.Unit ?? string.Empty, StringComparer.Ordinal)
+                .First())
+            .OrderBy(entry => entry.PartType, StringComparer.Ordinal)
+            .ThenBy(entry => entry.PackagePath, StringComparer.Ordinal)
+            .ToList();
     }
 
     public PartPackageExportResult ExportOne(

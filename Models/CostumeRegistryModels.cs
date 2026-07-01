@@ -6,7 +6,8 @@ public sealed record CostumeRegistryExport(
     Character3dIndex Character3dIndex,
     PartRegistry PartRegistry,
     HeadHairCompatibilityRegistry HeadHairCompatibility,
-    CardCostumeUnlockRegistry CardCostumeUnlocks
+    CardCostumeUnlockRegistry CardCostumeUnlocks,
+    PartSourceMap PartSourceMap
 );
 
 public sealed record Character3dIndex(
@@ -51,10 +52,43 @@ public sealed record PartRegistryEntry(
     [property: JsonPropertyName("part")] string? Part,
     [property: JsonPropertyName("bundlePath")] string? BundlePath,
     [property: JsonPropertyName("colorVariationBundlePath")] string? ColorVariationBundlePath,
+    [property: JsonPropertyName("baseSourceKey")] string? BaseSourceKey,
+    [property: JsonPropertyName("sourceKey")] string? SourceKey,
+    [property: JsonPropertyName("sourcePackagePath")] string? SourcePackagePath,
     [property: JsonPropertyName("packagePath")] string PackagePath,
     [property: JsonPropertyName("attachNode")] string? AttachNode,
     [property: JsonPropertyName("status")] string Status,
     [property: JsonPropertyName("warnings")] IReadOnlyList<string> Warnings
+);
+
+public sealed record PartSourceMap(
+    [property: JsonPropertyName("version")] int Version,
+    [property: JsonPropertyName("source")] IReadOnlyDictionary<string, string> Source,
+    [property: JsonPropertyName("entries")] IReadOnlyList<PartSourceMapEntry> Entries
+);
+
+public sealed record PartSourceMapEntry(
+    [property: JsonPropertyName("sourceKey")] string SourceKey,
+    [property: JsonPropertyName("baseSourceKey")] string BaseSourceKey,
+    [property: JsonPropertyName("partType")] string PartType,
+    [property: JsonPropertyName("bundlePath")] string BundlePath,
+    [property: JsonPropertyName("colorVariationBundlePath")] string? ColorVariationBundlePath,
+    [property: JsonPropertyName("assetRootRelativeBundlePath")] string? AssetRootRelativeBundlePath,
+    [property: JsonPropertyName("assetRootRelativeColorVariationBundlePath")] string? AssetRootRelativeColorVariationBundlePath,
+    [property: JsonPropertyName("packagePath")] string PackagePath,
+    [property: JsonPropertyName("representative")] PartSourceMapAlias Representative,
+    [property: JsonPropertyName("aliases")] IReadOnlyList<PartSourceMapAlias> Aliases
+);
+
+public sealed record PartSourceMapAlias(
+    [property: JsonPropertyName("costume3dId")] int Costume3dId,
+    [property: JsonPropertyName("partType")] string PartType,
+    [property: JsonPropertyName("characterId")] int CharacterId,
+    [property: JsonPropertyName("unit")] string? Unit,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("colorId")] int ColorId,
+    [property: JsonPropertyName("colorName")] string? ColorName,
+    [property: JsonPropertyName("costume3dGroupId")] int Costume3dGroupId
 );
 
 public sealed record HeadHairCompatibilityRegistry(

@@ -99,8 +99,17 @@ var costumeRegistryExporterSource = File.ReadAllText(Path.Combine(
 ));
 Expect(costumeRegistryModelsSource.Contains("headCompositionKind"), "head-hair compatibility rules expose composition kind");
 Expect(costumeRegistryModelsSource.Contains("activeContributors"), "head-hair compatibility rules expose active contributors");
+Expect(costumeRegistryModelsSource.Contains("PartSourceMap"), "costume registry exposes part source map");
+Expect(costumeRegistryModelsSource.Contains("baseSourceKey"), "part registry entries expose base source keys");
+Expect(costumeRegistryModelsSource.Contains("sourcePackagePath"), "part registry entries expose shared source package paths");
 Expect(costumeRegistryExporterSource.Contains("ResolveHeadHairComposition"), "registry exporter resolves head-hair composition metadata");
 Expect(costumeRegistryExporterSource.Contains("complete_head"), "registry exporter marks complete head compositions");
+Expect(costumeRegistryExporterSource.Contains("part-source-map.json"), "registry exporter writes part source map");
+Expect(costumeRegistryExporterSource.Contains("BuildSourceIdentity"), "registry exporter builds source identities");
+Expect(costumeRegistryExporterSource.Contains("SHA256.HashData"), "registry exporter uses stable source key hashes");
+Expect(costumeRegistryExporterSource.Contains("parts/_sources/"), "registry exporter points duplicate part ids at shared source package paths");
+Expect(partPackageExporterSource.Contains("SelectRepresentativePartEntries"), "part package exporter exports each shared source package once");
+Expect(partPackageExporterSource.Contains("GroupBy(entry => entry.PackagePath"), "part package exporter groups export work by package path");
 
 static void Expect(bool condition, string message)
 {

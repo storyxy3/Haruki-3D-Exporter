@@ -59,17 +59,20 @@ public static class PartMaterialMetadataSmoke
     private static MaterialInventory SkinMaterial(string name)
     {
         return new MaterialInventory(
-            name,
-            "Sekai/Character",
-            Array.Empty<TextureSlotInventory>(),
-            new[]
+            MaterialFileId: 0,
+            MaterialPathId: 1,
+            MaterialKey: MaterialIdentityLookup.BuildMaterialKey(0, 1),
+            Name: name,
+            ShaderName: "Sekai/Character",
+            TextureSlots: Array.Empty<TextureSlotInventory>(),
+            ColorProperties: new[]
             {
                 Color("_DefaultSkinColor", 253, 245, 235),
                 Color("_SkinColorDefault", 253, 245, 235),
                 Color("_Shadow1SkinColor", 227, 196, 203),
                 Color("_Shadow2SkinColor", 203, 151, 162),
             },
-            new[]
+            FloatProperties: new[]
             {
                 new FloatPropertyInventory("_Saturation", 0.5f),
                 new FloatPropertyInventory("_OutlineWidth", 0.001f),

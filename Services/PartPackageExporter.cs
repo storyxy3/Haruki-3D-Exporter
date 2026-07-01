@@ -171,11 +171,10 @@ public sealed class PartPackageExporter
         var springBone = springBoneExporter.Export(input);
         var runtimeSpringBone = BuildPartSpringBone(normalizedType, springBone);
         var nativeMeshes = ExportNativeMeshes(normalizedType, imported, runtimeSpringBone);
-        var materialWarnings = new List<string>();
-        var materialSlots = BuildMaterialSlots(normalizedType, inventory, textures, materialWarnings);
+        var materialSlots = BuildMaterialSlots(normalizedType, inventory, textures);
         var textureRoles = BuildTextureRoles(materialSlots);
         var package = new PartRuntimePackage(
-            Version: "0414-part-1",
+            Version: "0414-part-2",
             Part: new PartRuntimeIdentity(
                 Costume3dId: entry.Costume3dId,
                 PartType: normalizedType,
@@ -204,7 +203,6 @@ public sealed class PartPackageExporter
                 ? ReadHeadMorphBindings(imported)
                 : Array.Empty<HeadMorphChannel>(),
             Warnings: entry.Warnings
-                .Concat(materialWarnings)
                 .Concat(nativeMeshes.Warnings)
                 .Concat(runtimeSpringBone.Warnings)
                 .Distinct(StringComparer.Ordinal)
@@ -417,23 +415,27 @@ public sealed class PartPackageExporter
     private static IReadOnlyList<PjskSekaiRuntimeMaterialSlot> BuildMaterialSlots(
         string partType,
         BundleInventory inventory,
-        IReadOnlyDictionary<string, string> textures,
-        List<string> warnings
+        IReadOnlyDictionary<string, string> textures
     )
     {
-        var materialMap = BuildMaterialMap(inventory.Materials, warnings);
+        var materialLookup = MaterialIdentityLookup.FromInventory(inventory.Materials);
         return inventory.SkinnedMeshes
             .Concat(inventory.StaticMeshes)
-            .SelectMany(mesh => mesh.MaterialNames.Select(materialName =>
+            .SelectMany(mesh => mesh.MaterialSlots.Select(slot =>
             {
-                materialMap.TryGetValue(materialName, out var material);
+                var material = materialLookup.Require(slot);
+                var materialName = slot.MaterialName ?? material.Name;
                 var materialKind = partType == "body"
                     ? ClassifyBodyMaterialKind(materialName)
                     : partType == "head_optional" ? "accessory" : ClassifyHeadMaterialKind(materialName, FindTextureSlot(material, "_FaceShadowTex") is not null);
                 return new PjskSekaiRuntimeMaterialSlot(
                     Part: partType,
                     MeshName: mesh.MeshName,
-                    MaterialName: materialName,
+                    SlotIndex: slot.SlotIndex,
+                    MaterialKey: slot.MaterialKey,
+                    MaterialFileId: slot.MaterialFileId,
+                    MaterialPathId: slot.MaterialPathId,
+                    MaterialName: slot.MaterialName,
                     MaterialKind: materialKind,
                     MainTex: RewriteTexturePath(FindTextureSlot(material, "_MainTex"), textures),
                     ShadowTex: RewriteTexturePath(FindTextureSlot(material, "_ShadowTex"), textures),
@@ -444,29 +446,8 @@ public sealed class PartPackageExporter
                     Lighting: SekaiMaterialMetadata.BuildLightingSettings(material)
                 );
             }))
-            .DistinctBy(slot => $"{slot.MeshName}::{slot.MaterialName}", StringComparer.OrdinalIgnoreCase)
+            .DistinctBy(slot => $"{slot.MeshName}::{slot.SlotIndex}::{slot.MaterialKey}", StringComparer.Ordinal)
             .ToList();
-    }
-
-    private static IReadOnlyDictionary<string, MaterialInventory> BuildMaterialMap(
-        IReadOnlyList<MaterialInventory> materials,
-        List<string> warnings
-    )
-    {
-        var result = new Dictionary<string, MaterialInventory>(StringComparer.OrdinalIgnoreCase);
-        var duplicateNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var material in materials)
-        {
-            if (!result.TryAdd(material.Name, material))
-            {
-                duplicateNames.Add(material.Name);
-            }
-        }
-        foreach (var name in duplicateNames.OrderBy(name => name, StringComparer.OrdinalIgnoreCase))
-        {
-            warnings.Add($"duplicate material name `{name}`; using first material entry");
-        }
-        return result;
     }
 
     private static IReadOnlyList<PjskSekaiRuntimeTextureRole> BuildTextureRoles(IReadOnlyList<PjskSekaiRuntimeMaterialSlot> slots)
@@ -779,7 +760,16 @@ public sealed class PartPackageExporter
         {
             return;
         }
-        roles.Add(new PjskSekaiRuntimeTextureRole(slot.Part, slot.MaterialName, slot.MaterialKind, role, uri));
+        roles.Add(new PjskSekaiRuntimeTextureRole(
+            Part: slot.Part,
+            MaterialKey: slot.MaterialKey,
+            MaterialFileId: slot.MaterialFileId,
+            MaterialPathId: slot.MaterialPathId,
+            MaterialName: slot.MaterialName,
+            MaterialKind: slot.MaterialKind,
+            Role: role,
+            Uri: uri
+        ));
     }
 
     private static string ClassifyBodyMaterialKind(string materialName)

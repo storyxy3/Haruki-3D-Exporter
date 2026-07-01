@@ -88,8 +88,14 @@ Expect(costumeRegistryExporterSource.Contains("SHA256.HashData"), "registry expo
 Expect(costumeRegistryExporterSource.Contains("parts/_sources/"), "registry exporter points duplicate part ids at shared source package paths");
 Expect(partPackageExporterSource.Contains("SelectRepresentativePartEntries"), "part package exporter exports each shared source package once");
 Expect(partPackageExporterSource.Contains("GroupBy(entry => entry.PackagePath"), "part package exporter groups export work by package path");
-Expect(partPackageExporterSource.Contains("BuildMaterialMap"), "part package exporter tolerates duplicate material names");
-Expect(partPackageExporterSource.Contains("duplicate material name"), "part package exporter records duplicate material diagnostics");
+var inventoryModelsSource = File.ReadAllText(Path.Combine(repoRoot, "Models", "InventoryModels.cs"));
+var assetStudioBundleParserSource = File.ReadAllText(Path.Combine(repoRoot, "Services", "AssetStudioBundleParser.cs"));
+Expect(inventoryModelsSource.Contains("RenderMaterialSlotInventory"), "inventory records renderer material slots with identity");
+Expect(inventoryModelsSource.Contains("MaterialKey"), "inventory exposes material identity keys");
+Expect(assetStudioBundleParserSource.Contains("m_FileID"), "bundle parser preserves renderer material file ids");
+Expect(assetStudioBundleParserSource.Contains("m_PathID"), "bundle parser preserves renderer material path ids");
+Expect(partPackageExporterSource.Contains("MaterialIdentityLookup"), "part package exporter resolves materials by identity");
+Expect(!partPackageExporterSource.Contains("BuildMaterialMap"), "part package exporter no longer indexes materials by display name");
 Expect(partPackageExporterSource.Contains("part-export-error.json"), "part package exporter writes per-package errors during full export");
 Expect(partPackageExporterSource.Contains("Part package export skipped"), "part package exporter continues after per-package export failures");
 

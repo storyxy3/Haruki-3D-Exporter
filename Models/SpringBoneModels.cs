@@ -77,6 +77,7 @@ public sealed record SpringPrefabRenderer(
     [property: JsonPropertyName("meshName")] string? MeshName,
     [property: JsonPropertyName("skinnedMeshBones")] IReadOnlyList<long> SkinnedMeshBones,
     [property: JsonPropertyName("rootBonePathId")] long? RootBonePathId,
+    [property: JsonPropertyName("materialFileIds")] IReadOnlyList<long> MaterialFileIds,
     [property: JsonPropertyName("materialPathIds")] IReadOnlyList<long> MaterialPathIds
 );
 

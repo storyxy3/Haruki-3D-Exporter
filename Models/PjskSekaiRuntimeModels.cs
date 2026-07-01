@@ -128,6 +128,10 @@ public sealed record PjskUnityRuntimeNativeMesh(
 );
 
 public sealed record PjskUnityRuntimeNativeSubmesh(
+    [property: JsonPropertyName("slotIndex")] int SlotIndex,
+    [property: JsonPropertyName("materialKey")] string MaterialKey,
+    [property: JsonPropertyName("materialFileId")] long MaterialFileId,
+    [property: JsonPropertyName("materialPathId")] long MaterialPathId,
     [property: JsonPropertyName("materialName")] string MaterialName,
     [property: JsonPropertyName("start")] int Start,
     [property: JsonPropertyName("count")] int Count,
@@ -234,6 +238,10 @@ public sealed record PjskSekaiRuntimeMaterialSlots(
 public sealed record PjskSekaiRuntimeMaterialSlot(
     [property: JsonPropertyName("part")] string Part,
     [property: JsonPropertyName("meshName")] string MeshName,
+    [property: JsonPropertyName("slotIndex")] int SlotIndex,
+    [property: JsonPropertyName("materialKey")] string MaterialKey,
+    [property: JsonPropertyName("materialFileId")] long MaterialFileId,
+    [property: JsonPropertyName("materialPathId")] long MaterialPathId,
     [property: JsonPropertyName("materialName")] string? MaterialName,
     [property: JsonPropertyName("materialKind")] string MaterialKind,
     [property: JsonPropertyName("mainTex")] string? MainTex,
@@ -249,6 +257,9 @@ public sealed record PjskSekaiRuntimeMaterialSlot(
 
 public sealed record PjskSekaiRuntimeTextureRole(
     [property: JsonPropertyName("part")] string Part,
+    [property: JsonPropertyName("materialKey")] string MaterialKey,
+    [property: JsonPropertyName("materialFileId")] long MaterialFileId,
+    [property: JsonPropertyName("materialPathId")] long MaterialPathId,
     [property: JsonPropertyName("materialName")] string? MaterialName,
     [property: JsonPropertyName("materialKind")] string MaterialKind,
     [property: JsonPropertyName("role")] string Role,
@@ -499,6 +510,10 @@ public sealed record PjskSekaiRuntimeResolveReport(
 public sealed record PjskSekaiRuntimeMissingTextureRole(
     [property: JsonPropertyName("part")] string Part,
     [property: JsonPropertyName("meshName")] string MeshName,
+    [property: JsonPropertyName("slotIndex")] int SlotIndex,
+    [property: JsonPropertyName("materialKey")] string MaterialKey,
+    [property: JsonPropertyName("materialFileId")] long MaterialFileId,
+    [property: JsonPropertyName("materialPathId")] long MaterialPathId,
     [property: JsonPropertyName("materialName")] string? MaterialName,
     [property: JsonPropertyName("materialKind")] string MaterialKind,
     [property: JsonPropertyName("role")] string Role

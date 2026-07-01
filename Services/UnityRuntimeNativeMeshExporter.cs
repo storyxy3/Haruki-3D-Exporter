@@ -127,6 +127,7 @@ public sealed class UnityRuntimeNativeMeshExporter
                 MeshName: Path.GetFileName(mesh.Path),
                 SkinnedMeshBones: Array.Empty<long>(),
                 RootBonePathId: null,
+                MaterialFileIds: Array.Empty<long>(),
                 MaterialPathIds: Array.Empty<long>()
             );
 
@@ -743,17 +744,37 @@ public sealed class UnityRuntimeNativeMeshExporter
 
         var indexCursor = 0;
         var submeshes = new List<PjskUnityRuntimeNativeSubmesh>();
-        foreach (var submesh in mesh.SubmeshList)
+        foreach (var submesh in mesh.SubmeshList.Select((value, slotIndex) => new { value, slotIndex }))
         {
-            var indices = new List<int>(submesh.FaceList.Count * 3);
-            foreach (var face in submesh.FaceList)
+            var indices = new List<int>(submesh.value.FaceList.Count * 3);
+            foreach (var face in submesh.value.FaceList)
             {
-                indices.Add(submesh.BaseVertex + face.VertexIndices[0]);
-                indices.Add(submesh.BaseVertex + face.VertexIndices[1]);
-                indices.Add(submesh.BaseVertex + face.VertexIndices[2]);
+                indices.Add(submesh.value.BaseVertex + face.VertexIndices[0]);
+                indices.Add(submesh.value.BaseVertex + face.VertexIndices[1]);
+                indices.Add(submesh.value.BaseVertex + face.VertexIndices[2]);
             }
+            var materialPathId = submesh.slotIndex < renderer.MaterialPathIds.Count
+                ? renderer.MaterialPathIds[submesh.slotIndex]
+                : throw new InvalidOperationException(
+                    $"Renderer {renderer.PathId} submesh {submesh.slotIndex} has no material path id."
+                );
+            if (materialPathId == 0)
+            {
+                throw new InvalidOperationException(
+                    $"Renderer {renderer.PathId} submesh {submesh.slotIndex} has an empty material path id."
+                );
+            }
+            var materialFileId = submesh.slotIndex < renderer.MaterialFileIds.Count
+                ? renderer.MaterialFileIds[submesh.slotIndex]
+                : throw new InvalidOperationException(
+                    $"Renderer {renderer.PathId} submesh {submesh.slotIndex} has no material file id."
+                );
             submeshes.Add(new PjskUnityRuntimeNativeSubmesh(
-                MaterialName: submesh.Material,
+                SlotIndex: submesh.slotIndex,
+                MaterialKey: MaterialIdentityLookup.BuildMaterialKey(materialFileId, materialPathId),
+                MaterialFileId: materialFileId,
+                MaterialPathId: materialPathId,
+                MaterialName: submesh.value.Material,
                 Start: indexCursor,
                 Count: indices.Count,
                 Indices: indices

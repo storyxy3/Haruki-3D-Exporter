@@ -274,9 +274,11 @@ public sealed class SpringBoneExporter
                     MeshName: meshName,
                     SkinnedMeshBones: skinnedMeshBones,
                     RootBonePathId: rootBonePathId,
+                    MaterialFileIds: renderer.m_Materials
+                        .Select(material => (long)material.m_FileID)
+                        .ToList(),
                     MaterialPathIds: renderer.m_Materials
                         .Select(material => material.m_PathID)
-                        .Where(pathId => pathId != 0)
                         .ToList()
                 );
             })

@@ -35,11 +35,6 @@ public sealed class AssetStudioBundleParser
             .OfType<GameObject>()
             .Where(gameObject => gameObject.m_Transform != null)
             .ToList();
-        var materialInventory = objects
-            .OfType<Material>()
-            .Select(BuildMaterialInventory)
-            .OrderBy(material => material.Name, StringComparer.OrdinalIgnoreCase)
-            .ToList();
         var roots = gameObjects
             .Where(gameObject => gameObject.m_Transform.m_Father.IsNull)
             .Select(gameObject => new RootNodeInventory(
@@ -67,6 +62,18 @@ public sealed class AssetStudioBundleParser
             .Cast<RenderMeshInventory>()
             .OrderBy(mesh => mesh.NodePath, StringComparer.OrdinalIgnoreCase)
             .ToList();
+        var materialFileIdsByPathId = BuildMaterialFileIdIndex(skinnedMeshes, staticMeshes);
+        var materialInventory = objects
+            .OfType<Material>()
+            .Select(material => BuildMaterialInventory(
+                material,
+                materialFileIdsByPathId.TryGetValue(material.m_PathID, out var materialFileId)
+                    ? materialFileId
+                    : 0
+            ))
+            .OrderBy(material => material.MaterialFileId)
+            .ThenBy(material => material.MaterialPathId)
+            .ToList();
 
         return new BundleInventory(
             BundlePath: input.ResolvedBundlePath,
@@ -84,7 +91,7 @@ public sealed class AssetStudioBundleParser
         );
     }
 
-    private static MaterialInventory BuildMaterialInventory(Material material)
+    private static MaterialInventory BuildMaterialInventory(Material material, long materialFileId)
     {
         var shaderName = material.m_Shader.TryGet(out Shader shader) ? shader.m_Name : null;
         var slots = material.m_SavedProperties?.m_TexEnvs?
@@ -115,7 +122,46 @@ public sealed class AssetStudioBundleParser
             .ToList()
             ?? new List<FloatPropertyInventory>();
 
-        return new MaterialInventory(material.m_Name, shaderName, slots, colorProperties, floatProperties);
+        return new MaterialInventory(
+            MaterialFileId: materialFileId,
+            MaterialPathId: material.m_PathID,
+            MaterialKey: MaterialIdentityLookup.BuildMaterialKey(materialFileId, material.m_PathID),
+            Name: material.m_Name,
+            ShaderName: shaderName,
+            TextureSlots: slots,
+            ColorProperties: colorProperties,
+            FloatProperties: floatProperties
+        );
+    }
+
+    private static IReadOnlyDictionary<long, long> BuildMaterialFileIdIndex(
+        IReadOnlyList<RenderMeshInventory> skinnedMeshes,
+        IReadOnlyList<RenderMeshInventory> staticMeshes
+    )
+    {
+        return skinnedMeshes
+            .Concat(staticMeshes)
+            .SelectMany(mesh => mesh.MaterialSlots)
+            .Where(slot => slot.MaterialPathId != 0)
+            .GroupBy(slot => slot.MaterialPathId)
+            .ToDictionary(
+                group => group.Key,
+                group =>
+                {
+                    var fileIds = group
+                        .Select(slot => slot.MaterialFileId)
+                        .Distinct()
+                        .OrderBy(fileId => fileId)
+                        .ToList();
+                    if (fileIds.Count > 1)
+                    {
+                        throw new InvalidOperationException(
+                            $"Material pathId {group.Key} is referenced through multiple fileIds: {string.Join(", ", fileIds)}."
+                        );
+                    }
+                    return fileIds[0];
+                }
+            );
     }
 
     private static RenderMeshInventory BuildSkinnedMeshInventory(GameObject gameObject)
@@ -128,9 +174,7 @@ public sealed class AssetStudioBundleParser
             mesh = resolvedMesh;
         }
 
-        var materialNames = renderer.m_Materials
-            .Select(ptr => ptr.TryGet(out Material material) ? material.m_Name : $"missing:{ptr.m_PathID}")
-            .ToList();
+        var materialSlots = BuildMaterialSlots(renderer.m_Materials);
         var boneNames = renderer.m_Bones
             .Select(ptr =>
             {
@@ -150,7 +194,7 @@ public sealed class AssetStudioBundleParser
             MeshName: mesh?.m_Name ?? "<missing-mesh>",
             VertexCount: mesh?.m_VertexCount ?? 0,
             SubMeshCount: mesh?.m_SubMeshes?.Count ?? 0,
-            MaterialNames: materialNames,
+            MaterialSlots: materialSlots,
             BoneNames: boneNames
         );
     }
@@ -164,9 +208,7 @@ public sealed class AssetStudioBundleParser
         }
 
         mesh.ProcessData();
-        var materialNames = renderer.m_Materials
-            .Select(ptr => ptr.TryGet(out Material material) ? material.m_Name : $"missing:{ptr.m_PathID}")
-            .ToList();
+        var materialSlots = BuildMaterialSlots(renderer.m_Materials);
 
         return new RenderMeshInventory(
             NodeName: gameObject.m_Name,
@@ -174,9 +216,26 @@ public sealed class AssetStudioBundleParser
             MeshName: mesh.m_Name,
             VertexCount: mesh.m_VertexCount,
             SubMeshCount: mesh.m_SubMeshes?.Count ?? 0,
-            MaterialNames: materialNames,
+            MaterialSlots: materialSlots,
             BoneNames: Array.Empty<string>()
         );
+    }
+
+    private static IReadOnlyList<RenderMaterialSlotInventory> BuildMaterialSlots(IReadOnlyList<PPtr<Material>> materials)
+    {
+        return materials
+            .Select((ptr, index) =>
+            {
+                var name = ptr.TryGet(out Material material) ? material.m_Name : null;
+                return new RenderMaterialSlotInventory(
+                    SlotIndex: index,
+                    MaterialFileId: ptr.m_FileID,
+                    MaterialPathId: ptr.m_PathID,
+                    MaterialKey: MaterialIdentityLookup.BuildMaterialKey(ptr.m_FileID, ptr.m_PathID),
+                    MaterialName: name
+                );
+            })
+            .ToList();
     }
 
     private static string BuildTransformPath(Transform transform)

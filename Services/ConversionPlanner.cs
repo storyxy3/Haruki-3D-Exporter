@@ -142,16 +142,20 @@ public sealed class ConversionPlanner
     {
         var rootName = inventory.Roots.FirstOrDefault()?.Name ?? "BodyRoot";
         var neckAttachNode = SelectPreferredBodyAttachNode(inventory.AttachNodeCandidates);
-        var materialMap = inventory.Materials.ToDictionary(x => x.Name, StringComparer.OrdinalIgnoreCase);
+        var materialLookup = MaterialIdentityLookup.FromInventory(inventory.Materials);
         var bodyMaterialSlots = inventory.SkinnedMeshes
             .Concat(inventory.StaticMeshes)
-            .SelectMany(mesh => mesh.MaterialNames.Select(materialName =>
+            .SelectMany(mesh => mesh.MaterialSlots.Select(slot =>
             {
-                var material = materialMap.TryGetValue(materialName, out var value) ? value : null;
+                var material = materialLookup.Require(slot);
                 return new BodyMaterialSlot(
                     MeshName: mesh.MeshName,
-                    MaterialName: materialName,
-                    MaterialKind: ClassifyBodyMaterialKind(materialName),
+                    SlotIndex: slot.SlotIndex,
+                    MaterialFileId: slot.MaterialFileId,
+                    MaterialPathId: slot.MaterialPathId,
+                    MaterialKey: slot.MaterialKey,
+                    MaterialName: slot.MaterialName,
+                    MaterialKind: ClassifyBodyMaterialKind(slot.MaterialName ?? material.Name),
                     MainTex: FindTextureSlot(material, "_MainTex"),
                     ShadowTex: FindTextureSlot(material, "_ShadowTex"),
                     ValueTex: FindTextureSlot(material, "_ValueTex"),
@@ -159,8 +163,8 @@ public sealed class ConversionPlanner
                 );
             }))
             .DistinctBy(
-                slot => $"{slot.MeshName}::{slot.MaterialName}",
-                StringComparer.OrdinalIgnoreCase
+                slot => $"{slot.MeshName}::{slot.SlotIndex}::{slot.MaterialKey}",
+                StringComparer.Ordinal
             )
             .ToList();
 
@@ -355,18 +359,22 @@ public sealed class ConversionPlanner
             .Where(bodyBones.Contains)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToDictionary(name => name, name => name, StringComparer.OrdinalIgnoreCase);
-        var materialMap = headInventory.Materials.ToDictionary(x => x.Name, StringComparer.OrdinalIgnoreCase);
+        var materialLookup = MaterialIdentityLookup.FromInventory(headInventory.Materials);
         var faceSlots = headInventory.SkinnedMeshes
             .Concat(headInventory.StaticMeshes)
-            .Where(mesh => IsFaceLikeMesh(mesh, materialMap))
-            .SelectMany(mesh => mesh.MaterialNames.Select(materialName =>
+            .Where(mesh => IsFaceLikeMesh(mesh, materialLookup))
+            .SelectMany(mesh => mesh.MaterialSlots.Select(slot =>
             {
-                var material = materialMap.TryGetValue(materialName, out var value) ? value : null;
+                var material = materialLookup.Require(slot);
                 var hasFaceShadowTex = FindTextureSlot(material, "_FaceShadowTex") is not null;
                 return new FaceMaterialSlot(
                     MeshName: mesh.MeshName,
-                    MaterialName: materialName,
-                    MaterialKind: ClassifyHeadMaterialKind(materialName, hasFaceShadowTex),
+                    SlotIndex: slot.SlotIndex,
+                    MaterialFileId: slot.MaterialFileId,
+                    MaterialPathId: slot.MaterialPathId,
+                    MaterialKey: slot.MaterialKey,
+                    MaterialName: slot.MaterialName,
+                    MaterialKind: ClassifyHeadMaterialKind(slot.MaterialName ?? material.Name, hasFaceShadowTex),
                     MainTex: FindTextureSlot(material, "_MainTex"),
                     ShadowTex: FindTextureSlot(material, "_ShadowTex"),
                     ValueTex: FindTextureSlot(material, "_ValueTex"),
@@ -376,16 +384,20 @@ public sealed class ConversionPlanner
                 );
             }))
             .DistinctBy(
-                slot => $"{slot.MeshName}::{slot.MaterialName}",
-                StringComparer.OrdinalIgnoreCase
+                slot => $"{slot.MeshName}::{slot.SlotIndex}::{slot.MaterialKey}",
+                StringComparer.Ordinal
             )
             .ToList();
 
         var faceTintSource = faceSlots
-            .Select(slot => slot.MaterialName)
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .Select(name => materialMap.TryGetValue(name!, out var material) ? material : null)
-            .FirstOrDefault(material => material is not null && HasSkinColorProperty(material));
+            .Select(slot => materialLookup.Require(new RenderMaterialSlotInventory(
+                SlotIndex: slot.SlotIndex,
+                MaterialFileId: slot.MaterialFileId,
+                MaterialPathId: slot.MaterialPathId,
+                MaterialKey: slot.MaterialKey,
+                MaterialName: slot.MaterialName
+            )))
+            .FirstOrDefault(HasSkinColorProperty);
         var skinColorDefault = FindColorProperty(faceTintSource, "_SkinColorDefault")
             ?? FindColorProperty(faceTintSource, "_DefaultSkinColor")
             ?? FindColorProperty(faceTintSource, "_Shadow1SkinColor")
@@ -572,7 +584,7 @@ public sealed class ConversionPlanner
 
     private static bool IsFaceLikeMesh(
         RenderMeshInventory mesh,
-        IReadOnlyDictionary<string, MaterialInventory> materialMap
+        MaterialIdentityLookup materialLookup
     )
     {
         var meshName = mesh.MeshName.ToLowerInvariant();
@@ -581,15 +593,12 @@ public sealed class ConversionPlanner
             return true;
         }
 
-        foreach (var materialName in mesh.MaterialNames)
+        foreach (var slot in mesh.MaterialSlots)
         {
-            if (!materialMap.TryGetValue(materialName, out var material))
-            {
-                continue;
-            }
+            var material = materialLookup.Require(slot);
 
-            if (material.TextureSlots.Any(slot =>
-                    string.Equals(slot.SlotName, "_FaceShadowTex", StringComparison.OrdinalIgnoreCase)))
+            if (material.TextureSlots.Any(textureSlot =>
+                    string.Equals(textureSlot.SlotName, "_FaceShadowTex", StringComparison.OrdinalIgnoreCase)))
             {
                 return true;
             }

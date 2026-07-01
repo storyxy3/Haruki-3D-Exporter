@@ -19,6 +19,10 @@ public sealed class PjskSekaiRuntimeExtensionBuilder
             .Select(slot => new PjskSekaiRuntimeMaterialSlot(
                 Part: "body",
                 MeshName: slot.MeshName,
+                SlotIndex: slot.SlotIndex,
+                MaterialKey: slot.MaterialKey,
+                MaterialFileId: slot.MaterialFileId,
+                MaterialPathId: slot.MaterialPathId,
                 MaterialName: slot.MaterialName,
                 MaterialKind: slot.MaterialKind,
                 MainTex: RewriteCharacterTexturePath("body", slot.MainTex, characterTexturePathByName),
@@ -34,6 +38,10 @@ public sealed class PjskSekaiRuntimeExtensionBuilder
             .Select(slot => new PjskSekaiRuntimeMaterialSlot(
                 Part: "head",
                 MeshName: slot.MeshName,
+                SlotIndex: slot.SlotIndex,
+                MaterialKey: slot.MaterialKey,
+                MaterialFileId: slot.MaterialFileId,
+                MaterialPathId: slot.MaterialPathId,
                 MaterialName: slot.MaterialName,
                 MaterialKind: slot.MaterialKind,
                 MainTex: RewriteCharacterTexturePath("head", slot.MainTex, characterTexturePathByName),
@@ -1133,6 +1141,10 @@ public sealed class PjskSekaiRuntimeExtensionBuilder
                 missingTextureRoles.Add(new PjskSekaiRuntimeMissingTextureRole(
                     Part: slot.Part,
                     MeshName: slot.MeshName,
+                    SlotIndex: slot.SlotIndex,
+                    MaterialKey: slot.MaterialKey,
+                    MaterialFileId: slot.MaterialFileId,
+                    MaterialPathId: slot.MaterialPathId,
                     MaterialName: slot.MaterialName,
                     MaterialKind: slot.MaterialKind,
                     Role: role
@@ -1143,6 +1155,9 @@ public sealed class PjskSekaiRuntimeExtensionBuilder
 
         textureRoles.Add(new PjskSekaiRuntimeTextureRole(
             Part: slot.Part,
+            MaterialKey: slot.MaterialKey,
+            MaterialFileId: slot.MaterialFileId,
+            MaterialPathId: slot.MaterialPathId,
             MaterialName: slot.MaterialName,
             MaterialKind: slot.MaterialKind,
             Role: role,
@@ -1161,19 +1176,20 @@ public sealed class PjskSekaiRuntimeExtensionBuilder
             return Array.Empty<PjskSekaiRuntimeMaterialSlot>();
         }
 
-        var materialMap = accessoryInventory.Materials.ToDictionary(
-            material => material.Name,
-            StringComparer.OrdinalIgnoreCase
-        );
+        var materialLookup = MaterialIdentityLookup.FromInventory(accessoryInventory.Materials);
         return accessoryInventory.SkinnedMeshes
             .Concat(accessoryInventory.StaticMeshes)
-            .SelectMany(mesh => mesh.MaterialNames.Select(materialName =>
+            .SelectMany(mesh => mesh.MaterialSlots.Select(slot =>
             {
-                var material = materialMap.TryGetValue(materialName, out var value) ? value : null;
+                var material = materialLookup.Require(slot);
                 return new PjskSekaiRuntimeMaterialSlot(
                     Part: "accessory",
                     MeshName: mesh.MeshName,
-                    MaterialName: materialName,
+                    SlotIndex: slot.SlotIndex,
+                    MaterialKey: slot.MaterialKey,
+                    MaterialFileId: slot.MaterialFileId,
+                    MaterialPathId: slot.MaterialPathId,
+                    MaterialName: slot.MaterialName,
                     MaterialKind: "accessory",
                     MainTex: RewriteCharacterTexturePath(
                         "accessory",
@@ -1193,8 +1209,8 @@ public sealed class PjskSekaiRuntimeExtensionBuilder
                 );
             }))
             .DistinctBy(
-                slot => $"{slot.MeshName}::{slot.MaterialName}",
-                StringComparer.OrdinalIgnoreCase
+                slot => $"{slot.MeshName}::{slot.SlotIndex}::{slot.MaterialKey}",
+                StringComparer.Ordinal
             )
             .ToList();
     }

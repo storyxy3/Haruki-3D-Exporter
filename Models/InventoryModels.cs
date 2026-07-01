@@ -19,11 +19,22 @@ public sealed record FloatPropertyInventory(
 );
 
 public sealed record MaterialInventory(
+    long MaterialFileId,
+    long MaterialPathId,
+    string MaterialKey,
     string Name,
     string? ShaderName,
     IReadOnlyList<TextureSlotInventory> TextureSlots,
     IReadOnlyList<ColorPropertyInventory> ColorProperties,
     IReadOnlyList<FloatPropertyInventory> FloatProperties
+);
+
+public sealed record RenderMaterialSlotInventory(
+    int SlotIndex,
+    long MaterialFileId,
+    long MaterialPathId,
+    string MaterialKey,
+    string? MaterialName
 );
 
 public sealed record RenderMeshInventory(
@@ -32,7 +43,7 @@ public sealed record RenderMeshInventory(
     string MeshName,
     int VertexCount,
     int SubMeshCount,
-    IReadOnlyList<string> MaterialNames,
+    IReadOnlyList<RenderMaterialSlotInventory> MaterialSlots,
     IReadOnlyList<string> BoneNames
 );
 

@@ -45,6 +45,10 @@ public sealed record MaterialLightingSettings(
 
 public sealed record BodyMaterialSlot(
     string MeshName,
+    int SlotIndex,
+    long MaterialFileId,
+    long MaterialPathId,
+    string MaterialKey,
     string? MaterialName,
     string MaterialKind,
     string? MainTex,
@@ -55,6 +59,10 @@ public sealed record BodyMaterialSlot(
 
 public sealed record FaceMaterialSlot(
     string MeshName,
+    int SlotIndex,
+    long MaterialFileId,
+    long MaterialPathId,
+    string MaterialKey,
     string? MaterialName,
     string MaterialKind,
     string? MainTex,

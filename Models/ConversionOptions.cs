@@ -24,5 +24,8 @@ public sealed record ConversionOptions(
     int PartPackageShardCount,
     int PartPackageShardIndex,
     string AssetStudioLogLevel,
-    string RuntimeJsonOutput
+    string RuntimeJsonOutput,
+    bool CompactTextures,
+    string PngOptimizeMode,
+    int TextureCompactWorkers
 );

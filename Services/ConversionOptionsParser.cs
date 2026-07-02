@@ -29,6 +29,9 @@ public static class ConversionOptionsParser
         "  --part-package-shard-count and --part-package-shard-index run one deterministic package shard\n" +
         "  --assetstudio-log-level controls AssetStudio logs: warning, info, or debug\n" +
         "  --runtime-json-output controls runtime JSON files: gzip, json, or both\n" +
+        "  --compact-textures deduplicates package textures by exact SHA-256 and rewrites runtime JSON paths\n" +
+        "  --png-optimize controls lossless PNG optimization during compaction: oxipng or off\n" +
+        "  --texture-compact-workers limits concurrent PNG optimizers; 0 = min(4, CPU count)\n" +
         "  --export-face-motion writes face_motion.json from a costume_setting bundle or decoded AnimationClip JSON without Python helpers\n" +
         "  --motion accepts a costume_setting bundle or a folder containing unity-motion.json/face_motion.json/light_motion.json\n" +
         "  --head-root selects a specific root GameObject from the head bundle, for example face or mdl_chr_IDL_A_00\n" +
@@ -61,6 +64,9 @@ public static class ConversionOptionsParser
         var partPackageShardIndex = 0;
         var assetStudioLogLevel = "warning";
         var runtimeJsonOutput = RuntimeJsonWriter.Gzip;
+        var compactTextures = false;
+        var pngOptimize = "oxipng";
+        var textureCompactWorkers = 0;
 
         for (var i = 0; i < args.Length; i++)
         {
@@ -112,6 +118,11 @@ public static class ConversionOptionsParser
                 runtimeJsonOutput = string.IsNullOrWhiteSpace(config.RuntimeJsonOutput)
                     ? RuntimeJsonWriter.Gzip
                     : config.RuntimeJsonOutput!;
+                compactTextures = config.CompactTextures ?? false;
+                pngOptimize = string.IsNullOrWhiteSpace(config.PngOptimize)
+                    ? "oxipng"
+                    : config.PngOptimize!;
+                textureCompactWorkers = config.TextureCompactWorkers ?? 0;
             }
             catch (Exception ex)
             {
@@ -280,6 +291,24 @@ public static class ConversionOptionsParser
                 continue;
             }
 
+            if (arg is "--compact-textures")
+            {
+                compactTextures = true;
+                continue;
+            }
+
+            if (arg is "--png-optimize")
+            {
+                pngOptimize = ReadValue(args, ref i, arg);
+                continue;
+            }
+
+            if (arg is "--texture-compact-workers")
+            {
+                textureCompactWorkers = ReadIntValue(args, ref i, arg);
+                continue;
+            }
+
             if (arg is "--part-package-shard-count")
             {
                 partPackageShardCount = ReadIntValue(args, ref i, arg);
@@ -386,6 +415,16 @@ public static class ConversionOptionsParser
             return new ParseResult(false, null, "--runtime-json-output must be gzip, json, or both.");
         }
 
+        if (!IsValidPngOptimizeMode(pngOptimize))
+        {
+            return new ParseResult(false, null, "--png-optimize must be oxipng or off.");
+        }
+
+        if (textureCompactWorkers < 0)
+        {
+            return new ParseResult(false, null, "--texture-compact-workers must be 0 or greater.");
+        }
+
         if (partPackageProcessConcurrency != 1 && partPackageShardCount > 1)
         {
             return new ParseResult(false, null, "--part-package-process-concurrency cannot be combined with manual shard options.");
@@ -426,7 +465,10 @@ public static class ConversionOptionsParser
                 partPackageShardCount,
                 partPackageShardIndex,
                 assetStudioLogLevel.Trim().ToLowerInvariant(),
-                RuntimeJsonWriter.NormalizeMode(runtimeJsonOutput)
+                RuntimeJsonWriter.NormalizeMode(runtimeJsonOutput),
+                compactTextures,
+                NormalizePngOptimizeMode(pngOptimize),
+                textureCompactWorkers
             ),
             string.Empty
         );
@@ -461,6 +503,16 @@ public static class ConversionOptionsParser
     private static bool IsValidAssetStudioLogLevel(string value)
     {
         return value.Trim().ToLowerInvariant() is "warning" or "info" or "debug";
+    }
+
+    private static bool IsValidPngOptimizeMode(string value)
+    {
+        return value.Trim().ToLowerInvariant() is "oxipng" or "off";
+    }
+
+    private static string NormalizePngOptimizeMode(string value)
+    {
+        return value.Trim().ToLowerInvariant();
     }
 
     private static ExporterConfig LoadConfig(string configPath)

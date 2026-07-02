@@ -32,6 +32,9 @@ RUN dotnet publish -c Release -r linux-x64 -o /app/exporter \
     --no-restore \
     -p:AssetStudioRoot="${ASSETSTUDIO_ROOT}"
 
+FROM rust:1-bookworm AS oxipng
+RUN cargo install oxipng --version 9.1.5 --locked
+
 FROM mcr.microsoft.com/dotnet/runtime-deps:8.0-bookworm-slim
 
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=true
@@ -40,5 +43,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxml2 && \
     rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/exporter /app/exporter
+COPY --from=oxipng /usr/local/cargo/bin/oxipng /usr/local/bin/oxipng
 
 ENTRYPOINT ["/app/exporter/Haruki-3D-Exporter"]

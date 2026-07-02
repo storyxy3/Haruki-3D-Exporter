@@ -114,6 +114,7 @@ if (options.EmitPartPackages)
             {
                 Console.WriteLine($"Warnings: {result.Warnings.Count}");
             }
+            RunTextureCompactionIfEnabled(options);
         }
         else
         {
@@ -138,6 +139,7 @@ if (options.EmitPartPackages)
             {
                 Console.Error.WriteLine($"Skipped {failed} part runtime package(s); see part-export-error.json files in the output tree.");
             }
+            RunTextureCompactionIfEnabled(options);
         }
         return 0;
     }
@@ -1023,6 +1025,7 @@ static int RunPartPackageWorkers(ConversionOptions options)
             "--asset-root", options.AssetRoot!,
             "--out", options.OutputDirectory,
             "--manifest", shardManifestPaths[index],
+            "--part-package-process-concurrency", "1",
             "--part-package-shard-count", workers.ToString(CultureInfo.InvariantCulture),
             "--part-package-shard-index", index.ToString(CultureInfo.InvariantCulture),
             "--assetstudio-log-level", options.AssetStudioLogLevel,
@@ -1052,7 +1055,32 @@ static int RunPartPackageWorkers(ConversionOptions options)
 
     PartPackageExportManifest.Merge(manifestPath, shardManifestPaths);
     Console.WriteLine($"Merged {workers} part package manifest shard(s): {manifestPath}");
+    RunTextureCompactionIfEnabled(options);
     return 0;
+}
+
+static void RunTextureCompactionIfEnabled(ConversionOptions options)
+{
+    if (!options.CompactTextures)
+    {
+        return;
+    }
+    if (options.PartPackageShardCount > 1)
+    {
+        return;
+    }
+    var compactor = new TextureCompactor();
+    var report = compactor.Compact(
+        options.OutputDirectory,
+        options.RuntimeJsonOutput,
+        options.PngOptimizeMode,
+        options.TextureCompactWorkers
+    );
+    Console.WriteLine(
+        "Compacted textures: " +
+        $"{report.TextureFileCount} file(s), {report.UniqueHashCount} unique hash(es), " +
+        $"saved {report.SavedBytes} byte(s), rewrote {report.RewrittenReferenceCount} reference(s)."
+    );
 }
 
 static int ResolvePartPackageProcessConcurrency(ConversionOptions options)

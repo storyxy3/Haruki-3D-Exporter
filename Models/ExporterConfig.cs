@@ -27,5 +27,8 @@ public sealed record ExporterConfig(
     int? PartPackageShardIndex,
     string? AssetStudioLogLevel,
     string? RuntimeJsonOutput,
+    bool? CompactTextures,
+    string? PngOptimize,
+    int? TextureCompactWorkers,
     string? AssetStudioRoot
 );

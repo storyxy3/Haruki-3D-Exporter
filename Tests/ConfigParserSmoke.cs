@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.IO.Compression;
 using PjskBundle2Parts.Tests;
 using PjskBundle2Parts.Services;
@@ -22,6 +23,9 @@ File.WriteAllText(configPath, JsonSerializer.Serialize(new
     manifest = "/data/manifest-from-config.json",
     assetStudioLogLevel = "info",
     runtimeJsonOutput = "both",
+    compactTextures = true,
+    pngOptimize = "off",
+    textureCompactWorkers = 2,
     keepIntermediate = true
 }));
 
@@ -58,6 +62,9 @@ Expect(options.PartPackageShardCount == 1, "part package shard count defaults to
 Expect(options.PartPackageShardIndex == 0, "part package shard index defaults to zero");
 Expect(options.AssetStudioLogLevel == "info", "assetstudio log level comes from config");
 Expect(options.RuntimeJsonOutput == "both", "runtime JSON output comes from config");
+Expect(options.CompactTextures, "texture compaction comes from config");
+Expect(options.PngOptimizeMode == "off", "PNG optimization mode comes from config");
+Expect(options.TextureCompactWorkers == 2, "texture compaction worker count comes from config");
 
 var workerParsed = ConversionOptionsParser.Parse(new[]
 {
@@ -67,12 +74,18 @@ var workerParsed = ConversionOptionsParser.Parse(new[]
     "--out", "/data/out",
     "--part-package-process-concurrency", "8",
     "--assetstudio-log-level", "debug",
-    "--runtime-json-output", "gzip"
+    "--runtime-json-output", "gzip",
+    "--compact-textures",
+    "--png-optimize", "off",
+    "--texture-compact-workers", "3"
 });
 Expect(workerParsed.IsSuccess && workerParsed.Options is not null, "worker parse succeeds");
 Expect(workerParsed.Options!.PartPackageProcessConcurrency == 8, "CLI part package process concurrency parses");
 Expect(workerParsed.Options!.AssetStudioLogLevel == "debug", "CLI assetstudio log level parses");
 Expect(workerParsed.Options!.RuntimeJsonOutput == "gzip", "CLI runtime JSON output parses");
+Expect(workerParsed.Options!.CompactTextures, "CLI compact textures parses");
+Expect(workerParsed.Options!.PngOptimizeMode == "off", "CLI PNG optimize mode parses");
+Expect(workerParsed.Options!.TextureCompactWorkers == 3, "CLI texture compact workers parses");
 
 var invalidRuntimeJsonOutputParsed = ConversionOptionsParser.Parse(new[]
 {
@@ -83,6 +96,16 @@ var invalidRuntimeJsonOutputParsed = ConversionOptionsParser.Parse(new[]
     "--runtime-json-output", "brotli"
 });
 Expect(!invalidRuntimeJsonOutputParsed.IsSuccess, "invalid runtime JSON output is rejected");
+
+var invalidPngOptimizeParsed = ConversionOptionsParser.Parse(new[]
+{
+    "--emit-part-packages",
+    "--master", "/data/master",
+    "--asset-root", "/data/assets",
+    "--out", "/data/out",
+    "--png-optimize", "webp"
+});
+Expect(!invalidPngOptimizeParsed.IsSuccess, "invalid PNG optimize mode is rejected");
 
 var autoWorkerParsed = ConversionOptionsParser.Parse(new[]
 {
@@ -146,6 +169,33 @@ using (var document = JsonDocument.Parse(stream))
 RuntimeJsonWriter.Write(writerPath, new { version = "both" }, new JsonSerializerOptions(), RuntimeJsonWriter.Both);
 Expect(File.Exists(writerPath), "both runtime JSON mode writes plain JSON");
 Expect(File.Exists(writerPath + ".gz"), "both runtime JSON mode writes gzip file");
+
+var compactDir = Path.Combine(tempDir, "compact");
+var packageA = Path.Combine(compactDir, "parts", "_sources", "body", "a");
+var packageB = Path.Combine(compactDir, "parts", "_sources", "head", "b");
+var packageC = Path.Combine(compactDir, "parts", "_sources", "hair", "c");
+WriteRuntimePackage(packageA, "textures/body/a.png", new byte[] { 1, 2, 3, 4 });
+WriteRuntimePackage(packageB, "textures/head/b.png", new byte[] { 1, 2, 3, 4 });
+WriteRuntimePackage(packageC, "textures/hair/c.png", new byte[] { 9, 8, 7 });
+var compactReport = new TextureCompactor().Compact(compactDir, RuntimeJsonWriter.Gzip, "off", 1);
+Expect(compactReport.TextureFileCount == 3, "texture compactor scans package textures");
+Expect(compactReport.UniqueHashCount == 2, "texture compactor groups by exact SHA-256");
+Expect(compactReport.DuplicateFileCount == 1, "texture compactor counts duplicate files");
+Expect(compactReport.SavedBytes == 4, "texture compactor saves only exact duplicate bytes with optimization off");
+Expect(File.Exists(Path.Combine(compactDir, "texture-compaction-report.json")), "texture compactor writes report");
+Expect(!File.Exists(Path.Combine(packageA, "textures", "body", "a.png")), "texture compactor removes package-local texture A");
+Expect(!File.Exists(Path.Combine(packageB, "textures", "head", "b.png")), "texture compactor removes package-local texture B");
+var rewrittenA = ReadRuntimePackage(Path.Combine(packageA, "part-runtime.json"));
+var rewrittenB = ReadRuntimePackage(Path.Combine(packageB, "part-runtime.json"));
+var rewrittenC = ReadRuntimePackage(Path.Combine(packageC, "part-runtime.json"));
+var textureA = rewrittenA["characterTextures"]!["main"]!.GetValue<string>();
+var textureB = rewrittenB["characterTextures"]!["main"]!.GetValue<string>();
+var textureC = rewrittenC["characterTextures"]!["main"]!.GetValue<string>();
+Expect(textureA.StartsWith("/_texture_store/sha256/"), "texture compactor rewrites texture A to root store");
+Expect(textureA == textureB, "texture compactor points same-hash textures at same store path");
+Expect(textureA != textureC, "texture compactor keeps different hashes separate");
+Expect(rewrittenA["materialSlots"]![0]!["mainTex"]!.GetValue<string>() == textureA, "texture compactor rewrites material slot texture");
+Expect(File.Exists(Path.Combine(compactDir, textureA.TrimStart('/').Replace('/', Path.DirectorySeparatorChar))), "texture compactor writes store texture");
 
 PartMaterialMetadataSmoke.Run();
 
@@ -220,4 +270,39 @@ static string FindRepoRoot()
         }
     }
     throw new DirectoryNotFoundException("Could not locate Haruki-3D-Exporter repo root.");
+}
+
+static void WriteRuntimePackage(string packageDirectory, string texturePath, byte[] textureBytes)
+{
+    var textureFile = Path.Combine(packageDirectory, texturePath.Replace('/', Path.DirectorySeparatorChar));
+    Directory.CreateDirectory(Path.GetDirectoryName(textureFile)!);
+    File.WriteAllBytes(textureFile, textureBytes);
+    RuntimeJsonWriter.Write(
+        Path.Combine(packageDirectory, "part-runtime.json"),
+        new
+        {
+            characterTextures = new Dictionary<string, string>
+            {
+                ["main"] = texturePath
+            },
+            materialSlots = new[]
+            {
+                new
+                {
+                    mainTex = texturePath,
+                    shadowTex = (string?)null,
+                    valueTex = (string?)null,
+                    faceShadowTex = (string?)null
+                }
+            }
+        },
+        new JsonSerializerOptions(),
+        RuntimeJsonWriter.Gzip
+    );
+}
+
+static JsonObject ReadRuntimePackage(string runtimeJsonPath)
+{
+    using var stream = new GZipStream(File.OpenRead(runtimeJsonPath + ".gz"), CompressionMode.Decompress);
+    return JsonNode.Parse(stream)!.AsObject();
 }

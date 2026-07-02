@@ -34,9 +34,87 @@ public sealed class CostumeRegistryExporter
         WriteJson(Path.Combine(normalizedOutputDirectory, "parts", "part-source-map.json"), export.PartSourceMap, runtimeJsonOutput);
         WriteJson(Path.Combine(normalizedOutputDirectory, "parts", "head-hair-compatibility.json"), export.HeadHairCompatibility, runtimeJsonOutput);
         WriteJson(Path.Combine(normalizedOutputDirectory, "parts", "card-costume-unlocks.json"), export.CardCostumeUnlocks, runtimeJsonOutput);
+        WriteScopedPartRegistryIndexes(normalizedOutputDirectory, export, runtimeJsonOutput);
+        WriteScopedHeadHairCompatibilityIndexes(normalizedOutputDirectory, export, runtimeJsonOutput);
 
         PrintSummary(export, normalizedOutputDirectory);
         return export;
+    }
+
+    private static void WriteScopedPartRegistryIndexes(
+        string outputDirectory,
+        CostumeRegistryExport export,
+        string runtimeJsonOutput
+    )
+    {
+        var roles = export.PartRegistry.Entries
+            .Select(entry => (entry.CharacterId, entry.Unit))
+            .Concat(export.Character3dIndex.Entries.Select(entry => (entry.CharacterId, entry.Unit)))
+            .Distinct()
+            .OrderBy(entry => entry.CharacterId)
+            .ThenBy(entry => entry.Unit ?? string.Empty, StringComparer.Ordinal)
+            .ToList();
+
+        foreach (var role in roles)
+        {
+            var roleDirectory = Path.Combine(
+                outputDirectory,
+                "parts",
+                "by-role",
+                role.CharacterId.ToString(),
+                RuntimePathUnitSegment(role.Unit)
+            );
+            var partRegistry = new PartRegistry(
+                Version: export.PartRegistry.Version,
+                Source: export.PartRegistry.Source,
+                Entries: export.PartRegistry.Entries
+                    .Where(entry =>
+                        entry.CharacterId == role.CharacterId &&
+                        string.Equals(entry.Unit ?? string.Empty, role.Unit ?? string.Empty, StringComparison.Ordinal))
+                    .ToList()
+            );
+            var characterIndex = new Character3dIndex(
+                Version: export.Character3dIndex.Version,
+                Source: export.Character3dIndex.Source,
+                Entries: export.Character3dIndex.Entries
+                    .Where(entry =>
+                        entry.CharacterId == role.CharacterId &&
+                        string.Equals(entry.Unit ?? string.Empty, role.Unit ?? string.Empty, StringComparison.Ordinal))
+                    .ToList()
+            );
+
+            WriteJson(Path.Combine(roleDirectory, "part-registry.json"), partRegistry, runtimeJsonOutput);
+            WriteJson(Path.Combine(roleDirectory, "character3d-index.json"), characterIndex, runtimeJsonOutput);
+        }
+    }
+
+    private static void WriteScopedHeadHairCompatibilityIndexes(
+        string outputDirectory,
+        CostumeRegistryExport export,
+        string runtimeJsonOutput
+    )
+    {
+        var units = export.HeadHairCompatibility.Rules
+            .Select(rule => rule.Unit)
+            .Distinct()
+            .OrderBy(unit => unit ?? string.Empty, StringComparer.Ordinal)
+            .ToList();
+
+        foreach (var unit in units)
+        {
+            var compatibility = new HeadHairCompatibilityRegistry(
+                Version: export.HeadHairCompatibility.Version,
+                Source: export.HeadHairCompatibility.Source,
+                Rules: export.HeadHairCompatibility.Rules
+                    .Where(rule => string.Equals(rule.Unit ?? string.Empty, unit ?? string.Empty, StringComparison.Ordinal))
+                    .ToList()
+            );
+            WriteJson(
+                Path.Combine(outputDirectory, "parts", "compat", "by-unit", RuntimePathUnitSegment(unit), "head-hair-compatibility.json"),
+                compatibility,
+                runtimeJsonOutput
+            );
+        }
     }
 
     public CostumeRegistryExport ExportInMemory(string masterDirectory, string assetRoot)
@@ -481,7 +559,12 @@ public sealed class CostumeRegistryExporter
 
     private static string BuildRoleRuntimePath(int characterId, string? unit)
     {
-        return $"roles/{characterId}/{unit ?? "default"}/role-runtime.json";
+        return $"roles/{characterId}/{RuntimePathUnitSegment(unit)}/role-runtime.json";
+    }
+
+    private static string RuntimePathUnitSegment(string? unit)
+    {
+        return unit ?? "default";
     }
 
     private static string NormalizePackagePartType(string partType)

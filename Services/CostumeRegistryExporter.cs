@@ -17,18 +17,23 @@ public sealed class CostumeRegistryExporter
         WriteIndented = true,
     };
 
-    public CostumeRegistryExport Export(string masterDirectory, string assetRoot, string outputDirectory)
+    public CostumeRegistryExport Export(
+        string masterDirectory,
+        string assetRoot,
+        string outputDirectory,
+        string runtimeJsonOutput = RuntimeJsonWriter.Gzip
+    )
     {
         var export = ExportInMemory(masterDirectory, assetRoot);
         var normalizedOutputDirectory = Path.GetFullPath(outputDirectory);
 
         Directory.CreateDirectory(normalizedOutputDirectory);
         Directory.CreateDirectory(Path.Combine(normalizedOutputDirectory, "parts"));
-        WriteJson(Path.Combine(normalizedOutputDirectory, "character3d-index.json"), export.Character3dIndex);
-        WriteJson(Path.Combine(normalizedOutputDirectory, "parts", "part-registry.json"), export.PartRegistry);
-        WriteJson(Path.Combine(normalizedOutputDirectory, "parts", "part-source-map.json"), export.PartSourceMap);
-        WriteJson(Path.Combine(normalizedOutputDirectory, "parts", "head-hair-compatibility.json"), export.HeadHairCompatibility);
-        WriteJson(Path.Combine(normalizedOutputDirectory, "parts", "card-costume-unlocks.json"), export.CardCostumeUnlocks);
+        WriteJson(Path.Combine(normalizedOutputDirectory, "character3d-index.json"), export.Character3dIndex, runtimeJsonOutput);
+        WriteJson(Path.Combine(normalizedOutputDirectory, "parts", "part-registry.json"), export.PartRegistry, runtimeJsonOutput);
+        WriteJson(Path.Combine(normalizedOutputDirectory, "parts", "part-source-map.json"), export.PartSourceMap, runtimeJsonOutput);
+        WriteJson(Path.Combine(normalizedOutputDirectory, "parts", "head-hair-compatibility.json"), export.HeadHairCompatibility, runtimeJsonOutput);
+        WriteJson(Path.Combine(normalizedOutputDirectory, "parts", "card-costume-unlocks.json"), export.CardCostumeUnlocks, runtimeJsonOutput);
 
         PrintSummary(export, normalizedOutputDirectory);
         return export;
@@ -795,9 +800,9 @@ public sealed class CostumeRegistryExporter
             ?? throw new InvalidOperationException($"Failed to parse master file: {path}");
     }
 
-    private static void WriteJson<T>(string path, T value)
+    private static void WriteJson<T>(string path, T value, string runtimeJsonOutput)
     {
-        File.WriteAllText(path, JsonSerializer.Serialize(value, WriteJsonOptions));
+        RuntimeJsonWriter.Write(path, value, WriteJsonOptions, runtimeJsonOutput);
     }
 
     private static void PrintSummary(CostumeRegistryExport export, string outputDirectory)

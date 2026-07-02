@@ -23,5 +23,6 @@ public sealed record ConversionOptions(
     int PartPackageProcessConcurrency,
     int PartPackageShardCount,
     int PartPackageShardIndex,
-    string AssetStudioLogLevel
+    string AssetStudioLogLevel,
+    string RuntimeJsonOutput
 );

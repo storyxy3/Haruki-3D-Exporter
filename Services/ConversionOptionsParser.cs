@@ -28,6 +28,7 @@ public static class ConversionOptionsParser
         "  --part-package-workers and --part-package-core-count are aliases for --part-package-process-concurrency\n" +
         "  --part-package-shard-count and --part-package-shard-index run one deterministic package shard\n" +
         "  --assetstudio-log-level controls AssetStudio logs: warning, info, or debug\n" +
+        "  --runtime-json-output controls runtime JSON files: gzip, json, or both\n" +
         "  --export-face-motion writes face_motion.json from a costume_setting bundle or decoded AnimationClip JSON without Python helpers\n" +
         "  --motion accepts a costume_setting bundle or a folder containing unity-motion.json/face_motion.json/light_motion.json\n" +
         "  --head-root selects a specific root GameObject from the head bundle, for example face or mdl_chr_IDL_A_00\n" +
@@ -59,6 +60,7 @@ public static class ConversionOptionsParser
         var partPackageShardCount = 1;
         var partPackageShardIndex = 0;
         var assetStudioLogLevel = "warning";
+        var runtimeJsonOutput = RuntimeJsonWriter.Gzip;
 
         for (var i = 0; i < args.Length; i++)
         {
@@ -107,6 +109,9 @@ public static class ConversionOptionsParser
                 assetStudioLogLevel = string.IsNullOrWhiteSpace(config.AssetStudioLogLevel)
                     ? "warning"
                     : config.AssetStudioLogLevel!;
+                runtimeJsonOutput = string.IsNullOrWhiteSpace(config.RuntimeJsonOutput)
+                    ? RuntimeJsonWriter.Gzip
+                    : config.RuntimeJsonOutput!;
             }
             catch (Exception ex)
             {
@@ -269,6 +274,12 @@ public static class ConversionOptionsParser
                 continue;
             }
 
+            if (arg is "--runtime-json-output")
+            {
+                runtimeJsonOutput = ReadValue(args, ref i, arg);
+                continue;
+            }
+
             if (arg is "--part-package-shard-count")
             {
                 partPackageShardCount = ReadIntValue(args, ref i, arg);
@@ -370,6 +381,11 @@ public static class ConversionOptionsParser
             return new ParseResult(false, null, "--assetstudio-log-level must be warning, info, or debug.");
         }
 
+        if (!RuntimeJsonWriter.IsValidMode(runtimeJsonOutput))
+        {
+            return new ParseResult(false, null, "--runtime-json-output must be gzip, json, or both.");
+        }
+
         if (partPackageProcessConcurrency != 1 && partPackageShardCount > 1)
         {
             return new ParseResult(false, null, "--part-package-process-concurrency cannot be combined with manual shard options.");
@@ -409,7 +425,8 @@ public static class ConversionOptionsParser
                 partPackageProcessConcurrency,
                 partPackageShardCount,
                 partPackageShardIndex,
-                assetStudioLogLevel.Trim().ToLowerInvariant()
+                assetStudioLogLevel.Trim().ToLowerInvariant(),
+                RuntimeJsonWriter.NormalizeMode(runtimeJsonOutput)
             ),
             string.Empty
         );

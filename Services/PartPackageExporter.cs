@@ -36,7 +36,8 @@ public sealed class PartPackageExporter
         string outputDirectory,
         string? manifestPath = null,
         int shardCount = 1,
-        int shardIndex = 0
+        int shardIndex = 0,
+        string runtimeJsonOutput = RuntimeJsonWriter.Gzip
     )
     {
         var characterHeightMetersById = CharacterHeightResolver.LoadMetersByCharacterId(masterDirectory);
@@ -54,11 +55,12 @@ public sealed class PartPackageExporter
             {
                 var packageDirectory = Path.Combine(outputDirectory, entry.PackagePath.Replace('/', Path.DirectorySeparatorChar));
                 var runtimePath = Path.Combine(packageDirectory, "part-runtime.json");
+                var runtimeOutputPath = RuntimeJsonWriter.PrimaryPath(runtimePath, runtimeJsonOutput);
                 var stamp = PartPackageInputStamp.From(entry);
-                if (manifest.CanSkip(entry.PackagePath, runtimePath, stamp) &&
-                    RuntimePackageHasCharacterHeight(runtimePath))
+                if (manifest.CanSkip(entry.PackagePath, runtimeOutputPath, stamp) &&
+                    RuntimePackageHasCharacterHeight(runtimePath, runtimeJsonOutput))
                 {
-                    results.Add(new PartPackageExportResult(entry, runtimePath, Array.Empty<string>()));
+                    results.Add(new PartPackageExportResult(entry, runtimeOutputPath, Array.Empty<string>()));
                     continue;
                 }
 
@@ -71,14 +73,14 @@ public sealed class PartPackageExporter
                         cachedBundle?.Dispose();
                         cachedBundle = AssetStudioLoadedBundle.Load(input);
                     }
-                    result = Export(entry, assetRoot, outputDirectory, characterHeightMetersById, cachedBundle);
+                    result = Export(entry, assetRoot, outputDirectory, characterHeightMetersById, cachedBundle, runtimeJsonOutput);
                     manifest.Update(entry.PackagePath, stamp);
                 }
                 catch (Exception ex)
                 {
                     Directory.CreateDirectory(packageDirectory);
                     var errorPath = Path.Combine(packageDirectory, "part-export-error.json");
-                    WriteJson(errorPath, new
+                    File.WriteAllText(errorPath, JsonSerializer.Serialize(new
                     {
                         packagePath = entry.PackagePath,
                         sourcePackagePath = entry.SourcePackagePath,
@@ -90,7 +92,7 @@ public sealed class PartPackageExporter
                         colorVariationBundlePath = entry.ColorVariationBundlePath,
                         error = ex.Message,
                         exceptionType = ex.GetType().FullName,
-                    });
+                    }, WriteJsonOptions));
                     Console.Error.WriteLine($"Part package export skipped: {entry.PackagePath}: {ex.Message}");
                     result = new PartPackageExportResult(
                         entry,
@@ -148,7 +150,8 @@ public sealed class PartPackageExporter
         string outputDirectory,
         int costume3dId,
         string partType,
-        string? unit
+        string? unit,
+        string runtimeJsonOutput = RuntimeJsonWriter.Gzip
     )
     {
         var characterHeightMetersById = CharacterHeightResolver.LoadMetersByCharacterId(masterDirectory);
@@ -166,18 +169,19 @@ public sealed class PartPackageExporter
             throw new InvalidOperationException($"Matched part has no bundle path: costume3dId={costume3dId}, partType={partType}.");
         }
 
-        return Export(entry, assetRoot, outputDirectory, characterHeightMetersById);
+        return Export(entry, assetRoot, outputDirectory, characterHeightMetersById, runtimeJsonOutput);
     }
 
     public PartPackageExportResult Export(
         PartRegistryEntry entry,
         string assetRoot,
         string outputDirectory,
-        IReadOnlyDictionary<string, float>? characterHeightMetersById = null
+        IReadOnlyDictionary<string, float>? characterHeightMetersById = null,
+        string runtimeJsonOutput = RuntimeJsonWriter.Gzip
     )
     {
         using var loadedBundle = AssetStudioLoadedBundle.Load(ResolveInput(entry));
-        return Export(entry, assetRoot, outputDirectory, characterHeightMetersById, loadedBundle);
+        return Export(entry, assetRoot, outputDirectory, characterHeightMetersById, loadedBundle, runtimeJsonOutput);
     }
 
     private PartPackageExportResult Export(
@@ -185,7 +189,8 @@ public sealed class PartPackageExporter
         string assetRoot,
         string outputDirectory,
         IReadOnlyDictionary<string, float>? characterHeightMetersById,
-        AssetStudioLoadedBundle loadedBundle
+        AssetStudioLoadedBundle loadedBundle,
+        string runtimeJsonOutput
     )
     {
         var packageDirectory = Path.Combine(outputDirectory, entry.PackagePath.Replace('/', Path.DirectorySeparatorChar));
@@ -252,8 +257,8 @@ public sealed class PartPackageExporter
         );
 
         var runtimePath = Path.Combine(packageDirectory, "part-runtime.json");
-        WriteJson(runtimePath, package);
-        return new PartPackageExportResult(entry, runtimePath, package.Warnings);
+        WriteJson(runtimePath, package, runtimeJsonOutput);
+        return new PartPackageExportResult(entry, RuntimeJsonWriter.PrimaryPath(runtimePath, runtimeJsonOutput), package.Warnings);
     }
 
     private ResolvedBundleInput ResolveInput(PartRegistryEntry entry)
@@ -555,11 +560,20 @@ public sealed class PartPackageExporter
         };
     }
 
-    private static bool RuntimePackageHasCharacterHeight(string runtimePath)
+    private static bool RuntimePackageHasCharacterHeight(string runtimePath, string runtimeJsonOutput)
     {
+        if (!RuntimeJsonWriter.OutputsExist(runtimePath, runtimeJsonOutput))
+        {
+            return false;
+        }
+
+        var inputPath = RuntimeJsonWriter.NormalizeMode(runtimeJsonOutput) == RuntimeJsonWriter.Json
+            ? runtimePath
+            : RuntimeJsonWriter.GzipPath(runtimePath);
         try
         {
-            using var document = JsonDocument.Parse(File.ReadAllText(runtimePath));
+            using var stream = OpenRuntimeJsonForRead(inputPath);
+            using var document = JsonDocument.Parse(stream);
             return document.RootElement.TryGetProperty("manifest", out var manifest) &&
                 manifest.TryGetProperty("characterHeightMeters", out var height) &&
                 height.ValueKind == JsonValueKind.Number &&
@@ -1023,9 +1037,17 @@ public sealed class PartPackageExporter
         return vector is null ? new[] { 0f, -1f, 0f } : new[] { vector.X, vector.Y, vector.Z };
     }
 
-    private static void WriteJson<T>(string path, T value)
+    private static Stream OpenRuntimeJsonForRead(string path)
     {
-        File.WriteAllText(path, JsonSerializer.Serialize(value, WriteJsonOptions));
+        var stream = File.OpenRead(path);
+        return path.EndsWith(".gz", StringComparison.OrdinalIgnoreCase)
+            ? new System.IO.Compression.GZipStream(stream, System.IO.Compression.CompressionMode.Decompress)
+            : stream;
+    }
+
+    private static void WriteJson<T>(string path, T value, string runtimeJsonOutput)
+    {
+        RuntimeJsonWriter.Write(path, value, WriteJsonOptions, runtimeJsonOutput);
     }
 
     private static long? ReadPathId(System.Text.Json.Nodes.JsonNode? node)

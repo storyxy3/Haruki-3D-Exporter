@@ -49,7 +49,8 @@ if (options.EmitRoleRuntimes)
             options.AssetRoot!,
             options.OutputDirectory,
             options.RoleCharacter3dIds,
-            options.MotionPath
+            options.MotionPath,
+            options.RuntimeJsonOutput
         );
         Console.WriteLine($"Wrote {results.Count} role runtime package(s).");
         foreach (var result in results.Where(result => result.Warnings.Count > 0))
@@ -73,7 +74,8 @@ if (options.EmitCostumeRegistries)
         costumeRegistryExporter.Export(
             options.MasterDirectory!,
             options.AssetRoot!,
-            options.OutputDirectory
+            options.OutputDirectory,
+            options.RuntimeJsonOutput
         );
         if (options.EmitPartPackages)
         {
@@ -104,7 +106,8 @@ if (options.EmitPartPackages)
                 options.OutputDirectory,
                 options.PartCostume3dId.Value,
                 options.PartType,
-                options.PartUnit
+                options.PartUnit,
+                options.RuntimeJsonOutput
             );
             Console.WriteLine($"Wrote part runtime package: {result.RuntimePath}");
             if (result.Warnings.Count > 0)
@@ -125,7 +128,8 @@ if (options.EmitPartPackages)
                 options.OutputDirectory,
                 options.ManifestPath,
                 options.PartPackageShardCount,
-                options.PartPackageShardIndex
+                options.PartPackageShardIndex,
+                options.RuntimeJsonOutput
             );
             var succeeded = results.Count(result => result.Succeeded);
             var failed = results.Count - succeeded;
@@ -1022,6 +1026,7 @@ static int RunPartPackageWorkers(ConversionOptions options)
             "--part-package-shard-count", workers.ToString(CultureInfo.InvariantCulture),
             "--part-package-shard-index", index.ToString(CultureInfo.InvariantCulture),
             "--assetstudio-log-level", options.AssetStudioLogLevel,
+            "--runtime-json-output", options.RuntimeJsonOutput,
         });
         var process = Process.Start(startInfo)
             ?? throw new InvalidOperationException($"Failed to start part package worker {index}.");

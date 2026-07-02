@@ -26,5 +26,6 @@ public sealed record ExporterConfig(
     int? PartPackageShardCount,
     int? PartPackageShardIndex,
     string? AssetStudioLogLevel,
+    string? RuntimeJsonOutput,
     string? AssetStudioRoot
 );

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.IO.Compression;
 using PjskBundle2Parts.Tests;
 using PjskBundle2Parts.Services;
 
@@ -20,6 +21,7 @@ File.WriteAllText(configPath, JsonSerializer.Serialize(new
     roleCharacter3dIds = new[] { 5, 7 },
     manifest = "/data/manifest-from-config.json",
     assetStudioLogLevel = "info",
+    runtimeJsonOutput = "both",
     keepIntermediate = true
 }));
 
@@ -55,6 +57,7 @@ Expect(options.PartPackageProcessConcurrency == 1, "part package process concurr
 Expect(options.PartPackageShardCount == 1, "part package shard count defaults to one");
 Expect(options.PartPackageShardIndex == 0, "part package shard index defaults to zero");
 Expect(options.AssetStudioLogLevel == "info", "assetstudio log level comes from config");
+Expect(options.RuntimeJsonOutput == "both", "runtime JSON output comes from config");
 
 var workerParsed = ConversionOptionsParser.Parse(new[]
 {
@@ -63,11 +66,23 @@ var workerParsed = ConversionOptionsParser.Parse(new[]
     "--asset-root", "/data/assets",
     "--out", "/data/out",
     "--part-package-process-concurrency", "8",
-    "--assetstudio-log-level", "debug"
+    "--assetstudio-log-level", "debug",
+    "--runtime-json-output", "gzip"
 });
 Expect(workerParsed.IsSuccess && workerParsed.Options is not null, "worker parse succeeds");
 Expect(workerParsed.Options!.PartPackageProcessConcurrency == 8, "CLI part package process concurrency parses");
 Expect(workerParsed.Options!.AssetStudioLogLevel == "debug", "CLI assetstudio log level parses");
+Expect(workerParsed.Options!.RuntimeJsonOutput == "gzip", "CLI runtime JSON output parses");
+
+var invalidRuntimeJsonOutputParsed = ConversionOptionsParser.Parse(new[]
+{
+    "--emit-part-packages",
+    "--master", "/data/master",
+    "--asset-root", "/data/assets",
+    "--out", "/data/out",
+    "--runtime-json-output", "brotli"
+});
+Expect(!invalidRuntimeJsonOutputParsed.IsSuccess, "invalid runtime JSON output is rejected");
 
 var autoWorkerParsed = ConversionOptionsParser.Parse(new[]
 {
@@ -116,6 +131,21 @@ var invalidSingleAutoParsed = ConversionOptionsParser.Parse(new[]
     "--part-package-process-concurrency", "0"
 });
 Expect(!invalidSingleAutoParsed.IsSuccess, "auto process concurrency cannot combine with single part package export");
+
+var writerDir = Path.Combine(tempDir, "writer");
+var writerPath = Path.Combine(writerDir, "part-runtime.json");
+RuntimeJsonWriter.Write(writerPath, new { version = "test", value = 7 }, new JsonSerializerOptions(), RuntimeJsonWriter.Gzip);
+Expect(!File.Exists(writerPath), "gzip runtime JSON mode does not write plain JSON");
+Expect(File.Exists(writerPath + ".gz"), "gzip runtime JSON mode writes gzip file");
+using (var stream = new GZipStream(File.OpenRead(writerPath + ".gz"), CompressionMode.Decompress))
+using (var document = JsonDocument.Parse(stream))
+{
+    Expect(document.RootElement.GetProperty("version").GetString() == "test", "gzip runtime JSON can be decompressed and parsed");
+}
+
+RuntimeJsonWriter.Write(writerPath, new { version = "both" }, new JsonSerializerOptions(), RuntimeJsonWriter.Both);
+Expect(File.Exists(writerPath), "both runtime JSON mode writes plain JSON");
+Expect(File.Exists(writerPath + ".gz"), "both runtime JSON mode writes gzip file");
 
 PartMaterialMetadataSmoke.Run();
 

@@ -25,13 +25,14 @@ public sealed class RoleRuntimeExporter
         string assetRoot,
         string outputDirectory,
         IReadOnlyList<int> character3dIds,
-        string? motionPath = null
+        string? motionPath = null,
+        string runtimeJsonOutput = RuntimeJsonWriter.Gzip
     )
     {
         return character3dIds
             .Distinct()
             .OrderBy(id => id)
-            .Select(id => ExportOne(masterDirectory, assetRoot, outputDirectory, id, motionPath))
+            .Select(id => ExportOne(masterDirectory, assetRoot, outputDirectory, id, motionPath, runtimeJsonOutput))
             .ToList();
     }
 
@@ -40,7 +41,8 @@ public sealed class RoleRuntimeExporter
         string assetRoot,
         string outputDirectory,
         int character3dId,
-        string? motionPath = null
+        string? motionPath = null,
+        string runtimeJsonOutput = RuntimeJsonWriter.Gzip
     )
     {
         var resolvedCostume = character3dCostumeResolver.Resolve(
@@ -114,12 +116,12 @@ public sealed class RoleRuntimeExporter
             Warnings: warnings.Distinct().ToList()
         );
         var runtimePath = Path.Combine(roleDirectory, "role-runtime.json");
-        File.WriteAllText(runtimePath, JsonSerializer.Serialize(runtime, WriteJsonOptions));
+        RuntimeJsonWriter.Write(runtimePath, runtime, WriteJsonOptions, runtimeJsonOutput);
         return new RoleRuntimeExportResult(
             Character3dId: resolvedCostume.Character3dId,
             CharacterId: resolvedCostume.CharacterId,
             Unit: resolvedCostume.Unit,
-            RuntimePath: runtimePath,
+            RuntimePath: RuntimeJsonWriter.PrimaryPath(runtimePath, runtimeJsonOutput),
             Warnings: runtime.Warnings
         );
     }
